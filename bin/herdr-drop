@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.2.2"
+VERSION="1.2.3"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
@@ -48,8 +48,19 @@ special_visible() {
       'any(.[]; .specialWorkspace.name == $workspace)' >/dev/null 2>&1
 }
 
+hide_connector() {
+  command -v omarchy-shell >/dev/null 2>&1 || return 0
+  [[ -e $SHIBUMI_PLUGIN || -L $SHIBUMI_PROFILE ]] || return 0
+  omarchy-shell -q "$SHIBUMI_WIDGET_ID" beginClose
+}
+
 show_window() { special_visible || toggle_special; }
-hide_window() { special_visible && toggle_special; }
+hide_window() {
+  if special_visible; then
+    hide_connector
+    toggle_special
+  fi
+}
 
 # Opening a second Herdr client on top of an already focused Herdr window adds
 # no information. The dedicated drop-down window itself is excluded so the

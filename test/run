@@ -108,7 +108,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.2" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.3" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -132,6 +132,15 @@ cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/BarWidget.qml" \
 cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Service.qml" \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "installed Shibumi connector differs from this checkout"
+rg -Fq 'if (!panelVisible || connectionReveal <= 0.001)' \
+  "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  || fail "connector is not cleared when panel closing begins"
+rg -Fq 'if (root.panelVisible) root.beginClosing()' \
+  "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  || fail "bar toggle does not hide its connector before closing"
+rg -Fq 'omarchy-shell -q "$SHIBUMI_WIDGET_ID" beginClose' \
+  "$ROOT/bin/herdr-drop" \
+  || fail "keybinding does not hide its connector before closing"
 "$ROOT/install.sh" --shibumi --no-reload >/dev/null
 if compgen -G "$CONFIG_ROOT/herdr-drop/backups/shibumi-plugin.*" >/dev/null; then
   fail "idempotent Shibumi rerun created a redundant backup"
@@ -174,4 +183,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.2.2 base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.2.3 base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'

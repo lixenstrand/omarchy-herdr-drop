@@ -131,7 +131,7 @@ Item {
   function publishConnection() {
     if (!root.bar
         || typeof root.bar.publishConnectedPanel !== "function") return
-    if (connectionReveal <= 0.001) {
+    if (!panelVisible || connectionReveal <= 0.001) {
       if (typeof root.bar.clearConnectedPanel === "function")
         root.bar.clearConnectedPanel(root, activeScreenName)
       if (popoutRegistered
@@ -189,6 +189,14 @@ Item {
     publishConnection()
   }
 
+  function beginClosing() {
+    if (!panelVisible) return
+    // Remove the caret before dispatching the close. The panel then owns the
+    // entire exit animation instead of looking detached from a lingering bar.
+    panelVisible = false
+    publishConnection()
+  }
+
   function queryClients() {
     if (clientQuery.running) {
       clientQueryPending = true
@@ -200,18 +208,30 @@ Item {
   function handleHyprlandEvent(event) {
     if (!event) return
     const name = String(event.name || "")
-    if (["activespecial", "openwindow", "closewindow", "movewindow",
-         "movewindowv2", "monitoradded", "monitoraddedv2",
-         "monitorremoved"].indexOf(name) >= 0) syncTimer.restart()
+    if (name === "activespecial") {
+      const parts = String(event.data || "").split(",")
+      const workspace = String(parts[0] || "")
+      const screen = String(parts[1] || "")
+      if (workspace === "" && panelVisible
+          && (activeScreenName === "" || screen === activeScreenName))
+        beginClosing()
+      queryClients()
+      return
+    }
+    if (["openwindow", "closewindow", "movewindow", "movewindowv2",
+         "monitoradded", "monitoraddedv2",
+         "monitorremoved"].indexOf(name) >= 0) queryClients()
   }
 
   function toggle() {
+    if (root.panelVisible) root.beginClosing()
     if (root.bar) root.bar.run("herdr-drop toggle")
     else Quickshell.execDetached(["herdr-drop", "toggle"])
   }
 
   function close() {
     if (!panelVisible) return
+    root.beginClosing()
     if (root.bar) root.bar.run("herdr-drop hide")
     else Quickshell.execDetached(["herdr-drop", "hide"])
   }
@@ -245,6 +265,7 @@ Item {
 
   IpcHandler {
     target: "io.github.lixenstrand.herdr-drop"
+    function beginClose(): void { root.beginClosing() }
     function refresh(): void { root.refreshState() }
     function state(): string { return JSON.stringify(root.diagnosticState()) }
   }
