@@ -185,7 +185,7 @@ fi
 printf '%s' "$valid_config" >"$CONFIG_ROOT/herdr/config.toml"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.1" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.2" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -288,8 +288,9 @@ rg -q 'leaf = "specialWorkspaceIn"' "$HYPR/herdr-drop.lua" \
   && rg -q 'style = "slidefadevert top"' "$HYPR/herdr-drop.lua" \
   || fail "Herdr Drop does not enter from the top edge"
 rg -q 'leaf = "specialWorkspaceOut"' "$HYPR/herdr-drop.lua" \
-  && rg -q 'style = "slidefadevert bottom"' "$HYPR/herdr-drop.lua" \
-  || fail "Herdr Drop does not leave upward"
+  && rg -A2 'leaf = "specialWorkspaceOut"' "$HYPR/herdr-drop.lua" \
+    | rg -q 'enabled = false' \
+  || fail "Herdr Drop closing animation is enabled"
 rg -q '^omarchy-shell shell rescanPlugins$' "$TEST_LOG" \
   || fail "idempotent Shibumi install did not rescan plugins"
 rg -q '^omarchy restart shell$' "$TEST_LOG" \
@@ -326,4 +327,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.6.1 outside-click dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.6.2 window/layer dismissal, outside-click dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
