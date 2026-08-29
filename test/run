@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf -- "$SANDBOX"' EXIT
+
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
+
+assert_file() { [[ -f $1 ]] || fail "expected file: $1"; }
+assert_absent() { [[ ! -e $1 && ! -L $1 ]] || fail "expected absent: $1"; }
+assert_link_to() {
+  [[ -L $1 ]] || fail "expected symlink: $1"
+  [[ $(readlink -f -- "$1") == $(readlink -f -- "$2") ]] \
+    || fail "$1 points outside this checkout"
+}
+
+for script in "$ROOT/install.sh" "$ROOT/uninstall.sh" "$ROOT/bin/herdr-drop"; do
+  bash -n "$script"
+done
+
+HOME_DIR="$SANDBOX/home"
+CONFIG_ROOT="$HOME_DIR/.config"
+HYPR="$CONFIG_ROOT/hypr"
+FAKE_BIN="$SANDBOX/bin"
+mkdir -p "$HYPR" "$FAKE_BIN"
+printf '%s\n' 'require("default.hypr.omarchy")' >"$HYPR/hyprland.lua"
+
+for command_name in herdr hyprctl omarchy-launch-tui; do
+  printf '%s\n' '#!/bin/sh' 'exit 0' >"$FAKE_BIN/$command_name"
+  chmod 755 "$FAKE_BIN/$command_name"
+done
+printf '%s\n' '#!/bin/sh' "printf '%s\\n' 'SUPER + A → Existing action'" \
+  >"$FAKE_BIN/omarchy"
+chmod 755 "$FAKE_BIN/omarchy"
+ln -s "$(command -v jq)" "$FAKE_BIN/jq"
+
+export HERDR_DROP_HOME="$HOME_DIR"
+export XDG_CONFIG_HOME="$CONFIG_ROOT"
+export PATH="$FAKE_BIN:/usr/bin:/bin"
+
+"$ROOT/install.sh" --focus-title "Mission Control" --no-reload >/dev/null
+
+assert_link_to "$HOME_DIR/.local/bin/herdr-drop" "$ROOT/bin/herdr-drop"
+assert_link_to "$HYPR/herdr-drop.lua" "$ROOT/hypr/herdr-drop.lua"
+assert_file "$HYPR/herdr-drop-settings.lua"
+assert_file "$CONFIG_ROOT/herdr-drop/config"
+[[ $(<"$CONFIG_ROOT/herdr-drop/config") == "Mission Control" ]] \
+  || fail "focus title was not stored as plain text"
+[[ $(grep -cF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua") == 1 ]] \
+  || fail "Hyprland require was not installed exactly once"
+
+printf '%s\n' 'return { key = "SUPER + H" }' >"$HYPR/herdr-drop-settings.lua"
+"$ROOT/install.sh" --focus-title "Mission Control" --no-reload >/dev/null
+[[ $(<"$HYPR/herdr-drop-settings.lua") == 'return { key = "SUPER + H" }' ]] \
+  || fail "rerun overwrote user settings"
+backup_count="$(find "$CONFIG_ROOT/herdr-drop" -maxdepth 1 -name 'config.bak.*' | wc -l)"
+[[ $backup_count == 0 ]] || fail "idempotent rerun created a redundant backup"
+
+"$ROOT/uninstall.sh" --no-reload >/dev/null
+assert_absent "$HOME_DIR/.local/bin/herdr-drop"
+assert_absent "$HYPR/herdr-drop.lua"
+assert_file "$HYPR/herdr-drop-settings.lua"
+assert_file "$CONFIG_ROOT/herdr-drop/config"
+! grep -qF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua" \
+  || fail "uninstaller left the Hyprland require behind"
+
+"$ROOT/install.sh" --focus-title "Mission Control" --no-reload >/dev/null
+"$ROOT/uninstall.sh" --purge --no-reload >/dev/null
+assert_absent "$HYPR/herdr-drop-settings.lua"
+assert_absent "$CONFIG_ROOT/herdr-drop/config"
+compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
+  || fail "purge did not preserve a settings backup"
+compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
+  || fail "purge did not preserve a title backup"
+
+printf 'PASS: Herdr Drop install, rerun, uninstall, and purge\n'

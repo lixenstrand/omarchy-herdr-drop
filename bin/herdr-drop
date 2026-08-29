@@ -1,0 +1,127 @@
+#!/bin/bash
+# A persistent Herdr client in a drop-down Hyprland special workspace.
+
+set -uo pipefail
+
+APP_ID="org.omarchy.herdrdrop"
+SPECIAL="herdrdrop"
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/herdr-drop/config"
+
+# The config is user-owned plain text. Keeping a machine-specific title
+# outside this script makes the drop-down reusable without executing config.
+FOCUS_TITLE=""
+if [[ -f $CONFIG ]]; then
+  IFS= read -r FOCUS_TITLE <"$CONFIG" || true
+fi
+
+window_exists() {
+  hyprctl -j clients 2>/dev/null \
+    | jq -e --arg class "$APP_ID" 'any(.[]; .class == $class)' >/dev/null 2>&1
+}
+
+# Omarchy's Lua dispatcher does not accept the old Hyprland dispatcher syntax.
+# Report failures instead of turning the keybinding into a silent no-op.
+toggle_special() {
+  local response
+  response="$(hyprctl dispatch "hl.dsp.workspace.toggle_special(\"$SPECIAL\")" 2>&1)"
+  [[ $response == ok ]] && return 0
+  notify-send "Herdr Drop" "Could not toggle special:$SPECIAL — $response" 2>/dev/null
+  return 1
+}
+
+special_visible() {
+  hyprctl -j monitors 2>/dev/null \
+    | jq -e --arg workspace "special:$SPECIAL" \
+      'any(.[]; .specialWorkspace.name == $workspace)' >/dev/null 2>&1
+}
+
+show_window() { special_visible || toggle_special; }
+hide_window() { special_visible && toggle_special; }
+
+# Opening a second Herdr client on top of an already focused Herdr window adds
+# no information. The dedicated drop-down window itself is excluded so the
+# same key always remains able to hide it.
+on_herdr() {
+  local info class title
+  info="$(hyprctl -j activewindow 2>/dev/null)"
+  class="$(jq -r '.class // empty' <<<"$info")"
+  title="$(jq -r '.title // empty' <<<"$info")"
+  [[ $class == "$APP_ID" ]] && return 1
+  [[ $class == "org.omarchy.herdr" ]] && return 0
+  [[ $title =~ ^omarchy:\ \[ ]]
+}
+
+# Focus is changed only before the drop-down client is created. Later toggles
+# preserve wherever the user navigated inside Herdr.
+focus_target() {
+  local workspace
+  [[ -n $FOCUS_TITLE ]] || return 0
+  workspace="$(herdr pane list 2>/dev/null | jq -r --arg title "$FOCUS_TITLE" '
+    first(.result.panes[]?
+      | select((.terminal_title_stripped // "") | contains($title))
+      | .workspace_id) // empty
+  ' 2>/dev/null)"
+  [[ -n ${workspace:-} ]] || return 0
+  herdr workspace focus "$workspace" >/dev/null 2>&1
+}
+
+# The window rule creates the client hidden. Wait for the actual window before
+# revealing the special workspace so the first keypress never shows an empty
+# panel.
+launch_window() {
+  focus_target
+  omarchy-launch-tui --app-id="$APP_ID" herdr >/dev/null 2>&1 &
+  for _ in $(seq 1 40); do
+    window_exists && return 0
+    sleep 0.25
+  done
+  notify-send "Herdr Drop" "The Herdr window did not start within 10 seconds" 2>/dev/null
+  return 1
+}
+
+case "${1:-toggle}" in
+toggle)
+  if special_visible; then
+    hide_window
+  elif on_herdr; then
+    : # A normal Herdr window is already visible.
+  elif window_exists; then
+    show_window
+  else
+    launch_window && show_window
+  fi
+  ;;
+open)
+  window_exists || launch_window
+  show_window
+  ;;
+hide) hide_window ;;
+kill)
+  # Close only the client. Herdr's server and agent sessions keep running.
+  hyprctl -j clients 2>/dev/null \
+    | jq -r --arg class "$APP_ID" \
+      'first(.[] | select(.class == $class) | .address) // empty' \
+    | while read -r address; do
+        [[ -n $address ]] || continue
+        hyprctl dispatch \
+          "hl.dsp.window.close({ window = \"address:$address\" })" >/dev/null
+      done
+  ;;
+-h | --help | help)
+  cat <<'USAGE'
+herdr-drop — persistent Herdr client in a drop-down panel
+
+  toggle   Show or hide the panel (default)
+  open     Always show the panel
+  hide     Hide the panel
+  kill     Close the panel client; Herdr sessions keep running
+
+Put a pane-title fragment in ~/.config/herdr-drop/config to focus that pane
+when the panel client is first created.
+USAGE
+  ;;
+*)
+  printf 'Unknown command: %s\n' "$1" >&2
+  exit 1
+  ;;
+esac
