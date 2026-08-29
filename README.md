@@ -8,7 +8,8 @@ Version 1.2 adds an optional Shibumi bar button and a live connector that makes
 the bar and panel read as one surface while the panel is open. Version 1.3 adds
 a sheep icon that reacts with the panel, uses live agent state for its accent
 and attention dot, and shows concrete Herdr workspace and agent details on
-hover.
+hover. Version 1.4 distinguishes completed, blocked, and offline states, shows
+the two most important agents, and adds a privacy mode for screen sharing.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
@@ -61,9 +62,10 @@ profile too:
 The button toggles Herdr Drop. While the panel is visible, Shibumi draws the
 caret and connector over the real panel border; hiding the panel removes both.
 The sheep briefly hops when the panel opens and leaves upward when it closes.
-Its accent means a detected Herdr agent is working, while the dot means an
-agent is done or blocked. Hovering reports the focused workspace, the most
-important agent state with its real terminal task, and current totals.
+Its accent means a detected Herdr agent is working. A dot means an agent is
+done, `!` means an agent is blocked, and a dimmed sheep means the Herdr server
+is unavailable. Hovering reports the focused workspace, up to two agents in
+priority order with their real terminal tasks, and current totals.
 The QML plugin is installed as an owned directory because Qt rejects a whole
 plugin directory reached through a symlink. The base installation remains
 independent of Shibumi.
@@ -96,6 +98,20 @@ The optional first-launch pane title lives here as one plain-text line:
 ```text
 ~/.config/herdr-drop/config
 ```
+
+For screen sharing, set `privacyMode` on the widget entry in
+`~/.config/omarchy/shell.json`. Status and counts remain visible, but workspace
+labels and terminal titles are omitted:
+
+```json
+{
+  "id": "io.github.lixenstrand.herdr-drop",
+  "privacyMode": true
+}
+```
+
+Set `animateSheep` to `false` in the same entry to keep state colors and badges
+without spatial motion.
 
 ## Commands
 

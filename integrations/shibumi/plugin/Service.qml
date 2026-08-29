@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import "Status.js" as HerdrStatus
 
 Item {
   id: root
@@ -23,24 +24,13 @@ Item {
   property bool clientQueryPending: false
   property real connectionReveal: panelVisible ? 1 : 0
   property bool herdrQueryPending: false
-  property var herdrStatus: ({
-    available: false,
-    loading: true,
-    workspaces: 0,
-    agents: 0,
-    working: 0,
-    blocked: 0,
-    done: 0,
-    focusedWorkspace: "",
-    detail: "Läser Herdr-status…",
-    summary: ""
-  })
+  property var herdrStatus: HerdrStatus.loading()
 
   readonly property bool hasWorkingAgents:
-    Number(herdrStatus.working || 0) > 0
+    HerdrStatus.isWorking(herdrStatus)
   readonly property bool needsAttention:
-    Number(herdrStatus.blocked || 0) > 0
-      || Number(herdrStatus.done || 0) > 0
+    HerdrStatus.badgeKind(herdrStatus) === "blocked"
+      || HerdrStatus.badgeKind(herdrStatus) === "done"
 
   visible: false
   width: 0
@@ -61,127 +51,15 @@ Item {
     return records
   }
 
-  function cleanWorkspaceLabel(value) {
-    return String(value || "").replace(/^\[\d+\]\s*/, "").trim()
-  }
-
-  function cleanTerminalTitle(value) {
-    return String(value || "")
-      .replace(/^[^A-Za-z0-9À-ɏ]+/, "").trim()
-  }
-
-  function compact(value, maxLength) {
-    const text = String(value || "")
-    return text.length <= maxLength
-      ? text : text.slice(0, Math.max(1, maxLength - 1)) + "…"
-  }
-
-  function agentDetail(agent, workspaceLabels) {
-    const session = agent && agent.agent_session ? agent.agent_session : null
-    const name = String(agent && agent.agent ? agent.agent
-      : session && session.agent ? session.agent : "agent")
-    const workspace = cleanWorkspaceLabel(
-      workspaceLabels[String(agent && agent.workspace_id || "")] || "")
-    const title = compact(cleanTerminalTitle(agent
-      && (agent.terminal_title_stripped || agent.terminal_title)), 48)
-    let detail = name
-    if (workspace !== "") detail += " i " + workspace
-    if (title !== "" && title.toLowerCase() !== name.toLowerCase())
-      detail += " — " + title
-    return detail
-  }
-
-  function agentStatusDetail(agents, workspaceLabels) {
-    const priorities = [
-      { status: "blocked", label: "Väntar på dig" },
-      { status: "done", label: "Klar" },
-      { status: "working", label: "Arbetar" },
-      { status: "idle", label: "Redo" },
-      { status: "unknown", label: "Okänd status" }
-    ]
-    for (let priorityIndex = 0;
-         priorityIndex < priorities.length; priorityIndex++) {
-      const priority = priorities[priorityIndex]
-      const matches = []
-      for (let agentIndex = 0; agentIndex < agents.length; agentIndex++) {
-        if (String(agents[agentIndex].agent_status || "unknown")
-            === priority.status) matches.push(agents[agentIndex])
-      }
-      if (matches.length === 0) continue
-      const more = matches.length > 1 ? " +" + (matches.length - 1) : ""
-      return priority.label + ": "
-        + agentDetail(matches[0], workspaceLabels) + more
-    }
-    return "Inga upptäckta agenter"
-  }
-
-  function statusSummary(workspaceCount, agentCount) {
-    const workspaces = workspaceCount === 1
-      ? "1 workspace" : workspaceCount + " workspaces"
-    let agents = "inga upptäckta agenter"
-    if (agentCount === 1) agents = "1 upptäckt agent"
-    else if (agentCount > 1) agents = agentCount + " upptäckta agenter"
-    return workspaces + " · " + agents
-  }
-
   function applyHerdrSnapshot(payload) {
-    const result = payload && payload.result ? payload.result : null
-    const snapshot = result && result.snapshot ? result.snapshot : null
-    if (!snapshot || typeof snapshot !== "object") return false
-
-    const workspaces = Array.isArray(snapshot.workspaces)
-      ? snapshot.workspaces : []
-    const agents = Array.isArray(snapshot.agents) ? snapshot.agents : []
-    const workspaceLabels = ({})
-    let focusedWorkspace = ""
-    for (let index = 0; index < workspaces.length; index++) {
-      const workspace = workspaces[index] || ({})
-      const label = cleanWorkspaceLabel(workspace.label)
-      workspaceLabels[String(workspace.workspace_id || "")] = label
-      if (workspace.focused === true
-          || String(workspace.workspace_id || "")
-            === String(snapshot.focused_workspace_id || ""))
-        focusedWorkspace = label
-    }
-
-    let working = 0
-    let blocked = 0
-    let done = 0
-    for (let index = 0; index < agents.length; index++) {
-      const status = String(agents[index].agent_status || "unknown")
-      if (status === "working") working++
-      else if (status === "blocked") blocked++
-      else if (status === "done") done++
-    }
-
-    herdrStatus = ({
-      available: true,
-      loading: false,
-      workspaces: workspaces.length,
-      agents: agents.length,
-      working: working,
-      blocked: blocked,
-      done: done,
-      focusedWorkspace: focusedWorkspace,
-      detail: agentStatusDetail(agents, workspaceLabels),
-      summary: statusSummary(workspaces.length, agents.length)
-    })
+    const status = HerdrStatus.fromPayload(payload)
+    if (!status) return false
+    herdrStatus = status
     return true
   }
 
   function markHerdrUnavailable() {
-    herdrStatus = ({
-      available: false,
-      loading: false,
-      workspaces: 0,
-      agents: 0,
-      working: 0,
-      blocked: 0,
-      done: 0,
-      focusedWorkspace: "",
-      detail: "Herdr-servern svarar inte",
-      summary: ""
-    })
+    herdrStatus = HerdrStatus.unavailable()
   }
 
   function queryHerdrStatus() {

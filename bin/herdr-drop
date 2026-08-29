@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.3.0"
+VERSION="1.4.0"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
@@ -172,7 +172,8 @@ doctor() {
       && grep -qFx -- "$SHIBUMI_WIDGET_ID" "$SHIBUMI_PLUGIN/.herdr-drop-owned" \
       && cmp -s -- "$SHIBUMI_PLUGIN/manifest.json" "$REPO_ROOT/integrations/shibumi/plugin/manifest.json" \
       && cmp -s -- "$SHIBUMI_PLUGIN/BarWidget.qml" "$REPO_ROOT/integrations/shibumi/plugin/BarWidget.qml" \
-      && cmp -s -- "$SHIBUMI_PLUGIN/Service.qml" "$REPO_ROOT/integrations/shibumi/plugin/Service.qml"; then
+      && cmp -s -- "$SHIBUMI_PLUGIN/Service.qml" "$REPO_ROOT/integrations/shibumi/plugin/Service.qml" \
+      && cmp -s -- "$SHIBUMI_PLUGIN/Status.js" "$REPO_ROOT/integrations/shibumi/plugin/Status.js"; then
       pass "Shibumi widget files match this checkout"
     else
       fail "Shibumi widget is missing or differs from this checkout: $SHIBUMI_PLUGIN"

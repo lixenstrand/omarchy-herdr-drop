@@ -33,6 +33,13 @@ if command -v qmllint >/dev/null 2>&1; then
   qmllint -I /usr/share/omarchy/shell \
     "$ROOT/integrations/shibumi/plugin/Service.qml" >/dev/null 2>&1
 fi
+QML_TEST_RUNNER="$(command -v qmltestrunner || true)"
+if [[ -z $QML_TEST_RUNNER && -x /usr/lib/qt6/bin/qmltestrunner ]]; then
+  QML_TEST_RUNNER=/usr/lib/qt6/bin/qmltestrunner
+fi
+[[ -n $QML_TEST_RUNNER ]] || fail "qmltestrunner is required for status tests"
+QT_QPA_PLATFORM=offscreen "$QML_TEST_RUNNER" \
+  -input "$ROOT/test/qml" >/dev/null
 
 HOME_DIR="$SANDBOX/home"
 CONFIG_ROOT="$HOME_DIR/.config"
@@ -109,7 +116,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.3.0" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.4.0" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -133,6 +140,9 @@ cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/BarWidget.qml" \
 cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Service.qml" \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "installed Shibumi connector differs from this checkout"
+cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Status.js" \
+  "$ROOT/integrations/shibumi/plugin/Status.js" \
+  || fail "installed Shibumi status logic differs from this checkout"
 rg -Fq 'if (!panelVisible || connectionReveal <= 0.001)' \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "connector is not cleared when panel closing begins"
@@ -149,16 +159,21 @@ rg -Fq 'id: openingMotion' \
   || fail "sheep motion does not cover both opening and closing"
 rg -Fq 'active: root.opened || root.hasWorkingAgents' \
   "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
-  && rg -Fq 'visible: root.needsAttention' \
+  && rg -Fq 'visible: root.statusBadge === "done"' \
+    "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
+  && rg -Fq 'visible: root.statusBadge === "blocked"' \
     "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
   || fail "sheep icon does not expose live agent state"
 rg -Fq 'command: ["herdr", "api", "snapshot"]' \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   && rg -Fq 'Väntar på dig' \
-    "$ROOT/integrations/shibumi/plugin/Service.qml" \
+    "$ROOT/integrations/shibumi/plugin/Status.js" \
   && rg -Fq 'terminal_title_stripped' \
-    "$ROOT/integrations/shibumi/plugin/Service.qml" \
+    "$ROOT/integrations/shibumi/plugin/Status.js" \
   || fail "hover status is not backed by concrete Herdr data"
+rg -Fq 'root.setting("privacyMode", false)' \
+  "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
+  || fail "Shibumi widget does not expose privacy mode"
 rg -Fq 'omarchy-shell -q "$SHIBUMI_WIDGET_ID" beginClose' \
   "$ROOT/bin/herdr-drop" \
   || fail "keybinding does not hide its connector before closing"
@@ -204,4 +219,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.3.0 isolation, base and Shibumi install, live sheep status, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.4.0 isolation, install, state scenarios, privacy, animation, doctor, rerun, uninstall, and purge\n'

@@ -136,7 +136,7 @@ link_file() {
 install_shibumi_plugin() {
   local target="$SHIBUMI_PLUGIN_TARGET"
   local marker=".herdr-drop-owned"
-  local plugin_files=(manifest.json BarWidget.qml Service.qml "$marker")
+  local plugin_files=(manifest.json BarWidget.qml Service.qml Status.js "$marker")
   local matches=1 file backup_root backup_target
 
   if [[ -L $target ]]; then

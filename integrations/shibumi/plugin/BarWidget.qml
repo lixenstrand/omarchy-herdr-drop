@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import qs.Ui as Ui
+import "Status.js" as HerdrStatus
 
 Ui.BarWidget {
   id: root
@@ -26,30 +27,18 @@ Ui.BarWidget {
     && connector.panelVisible === true
     && connector.activeScreenName === screenName
   readonly property var herdrStatus: connector && connector.herdrStatus
-    ? connector.herdrStatus : ({
-      available: false,
-      loading: true,
-      focusedWorkspace: "",
-      detail: "Läser Herdr-status…",
-      summary: ""
-    })
-  readonly property bool hasWorkingAgents: connector
-    && connector.hasWorkingAgents === true
-  readonly property bool needsAttention: connector
-    && connector.needsAttention === true
+    ? connector.herdrStatus : HerdrStatus.loading()
+  readonly property bool hasWorkingAgents:
+    HerdrStatus.isWorking(root.herdrStatus)
+  readonly property string statusBadge:
+    HerdrStatus.badgeKind(root.herdrStatus)
+  readonly property bool privacyMode:
+    root.setting("privacyMode", false) === true
   readonly property bool motionEnabled:
     root.setting("animateSheep", true) !== false
       && Quickshell.env("OMARCHY_REDUCE_MOTION") !== "1"
-  readonly property string statusTooltip: {
-    const action = root.opened ? "Stäng Herdr Drop" : "Öppna Herdr Drop"
-    const workspace = String(root.herdrStatus.focusedWorkspace || "")
-    const firstLine = workspace !== ""
-      ? action + " · " + workspace + " fokuserad" : action
-    const lines = [firstLine, String(root.herdrStatus.detail || "")]
-    const summary = String(root.herdrStatus.summary || "")
-    if (summary !== "") lines.push(summary)
-    return lines.join("\n")
-  }
+  readonly property string statusTooltip:
+    HerdrStatus.tooltip(root.herdrStatus, root.opened, root.privacyMode)
 
   property bool componentReady: false
 
@@ -148,6 +137,7 @@ Ui.BarWidget {
       bar: root.bar
       text: "󰳆"
       active: root.opened || root.hasWorkingAgents
+      dimmed: root.statusBadge === "offline"
       tooltipText: root.statusTooltip
       onPressed: root.togglePanel()
       onTooltipHoveredChanged: {
@@ -168,7 +158,23 @@ Ui.BarWidget {
       x: Math.round(parent.width / 2 + button.opticalSize / 2 - width)
       y: Math.round(parent.height / 2 - button.opticalSize / 2)
       color: button.activeColor
-      visible: root.needsAttention
+      visible: root.statusBadge === "done"
+    }
+
+    Text {
+      width: Math.max(7, Math.round(button.opticalSize * 0.42))
+      height: width
+      x: Math.round(parent.width / 2 + button.opticalSize / 2 - width)
+      y: Math.round(parent.height / 2 - button.opticalSize / 2 - 1)
+      text: "!"
+      color: button.activeColor
+      font.family: button.fontFamily
+      font.pixelSize: Math.max(8, Math.round(button.fontSize * 0.65))
+      font.bold: true
+      renderType: Text.NativeRendering
+      horizontalAlignment: Text.AlignHCenter
+      verticalAlignment: Text.AlignVCenter
+      visible: root.statusBadge === "blocked"
     }
   }
 
