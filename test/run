@@ -26,6 +26,7 @@ jq empty "$ROOT/integrations/shibumi/plugin/manifest.json"
 luac -p "$ROOT/hypr/herdr-drop.lua" \
   "$ROOT/hypr/herdr-drop-settings.lua" \
   "$ROOT/integrations/shibumi/herdr-drop-integration.lua"
+lua "$ROOT/test/hypr-isolation.lua" "$ROOT/hypr/herdr-drop.lua"
 if command -v qmllint >/dev/null 2>&1; then
   qmllint -I /usr/share/omarchy/shell \
     "$ROOT/integrations/shibumi/plugin/BarWidget.qml" >/dev/null 2>&1
@@ -108,7 +109,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.3" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.4" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -183,4 +184,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.2.3 base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.2.4 isolation, base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'

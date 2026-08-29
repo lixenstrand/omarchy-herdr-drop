@@ -28,6 +28,35 @@ end
 
 local app_id = "org.omarchy.herdrdrop"
 local special = "herdrdrop"
+local special_workspace = "special:" .. special
+
+-- A visible special workspace becomes the launch target for unrelated apps.
+-- Keep this one private by returning every non-Herdr window to the regular
+-- workspace that remains active underneath it.
+local function isolate_window(window, workspace)
+  if window == nil or window.class == app_id then return end
+
+  local current = workspace or window.workspace
+  if current == nil or current.name ~= special_workspace then return end
+
+  local monitor = window.monitor
+  local target = monitor and monitor.active_workspace or nil
+  if target == nil or target.name == special_workspace then return end
+
+  hl.dispatch(hl.dsp.window.move({
+    workspace = target,
+    follow = false,
+    window = window,
+  }))
+end
+
+hl.on("window.open", isolate_window)
+hl.on("window.move_to_workspace", isolate_window)
+hl.on("config.reloaded", function()
+  for _, window in ipairs(hl.get_workspace_windows(special_workspace) or {}) do
+    isolate_window(window)
+  end
+end)
 
 -- Always unbind first: the installer reports the previous owner before this
 -- file is loaded, and Hyprland must not retain two actions for the same key.
@@ -45,7 +74,7 @@ local window_rules = {
     tostring(settings.top),
   },
   rounding = settings.rounding,
-  workspace = "special:" .. special .. " silent",
+  workspace = special_workspace .. " silent",
 }
 
 -- Keep Omarchy's theme-owned border and opacity unless explicitly overridden.
