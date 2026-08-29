@@ -28,15 +28,18 @@ FOCUS_TITLE=""
 FOCUS_TITLE_SET=0
 RELOAD=1
 SHIBUMI=0
+SHIBUMI_STYLE=0
 
 usage() {
   cat <<'USAGE'
-Usage: ./install.sh [--focus-title TEXT] [--shibumi] [--no-reload]
+Usage: ./install.sh [--focus-title TEXT] [--shibumi-style] [--shibumi] [--no-reload]
 
   --focus-title TEXT  Focus the first Herdr pane whose title contains TEXT
                       when the drop-down client is first created.
+  --shibumi-style     Add only the connected-panel geometry and visual profile.
+                      Use this with the standalone community plugin.
   --shibumi           Add the Herdr bar button and connected-panel styling for
-                      the hancore.shibumi.bar plugin.
+                      the hancore.shibumi.bar plugin (bundled legacy install).
   --no-reload         Install files without reloading Hyprland.
 USAGE
 }
@@ -59,6 +62,11 @@ while (( $# > 0 )); do
     ;;
   --shibumi)
     SHIBUMI=1
+    SHIBUMI_STYLE=1
+    shift
+    ;;
+  --shibumi-style)
+    SHIBUMI_STYLE=1
     shift
     ;;
   -h | --help)
@@ -80,10 +88,10 @@ for command_name in herdr jq hyprctl omarchy omarchy-launch-tui; do
   }
 done
 
-if (( SHIBUMI )); then
+if (( SHIBUMI_STYLE )); then
   for command_name in omarchy-shell socat; do
     command -v "$command_name" >/dev/null 2>&1 || {
-      echo "Missing required command for --shibumi: $command_name" >&2
+      echo "Missing required command for Shibumi integration: $command_name" >&2
       exit 1
     }
   done
@@ -93,7 +101,7 @@ if (( SHIBUMI )); then
   }
   active_bar="$(jq -r '.bar.id // "omarchy.bar"' "$SHELL_CONFIG")"
   [[ $active_bar == "$SHIBUMI_BAR_ID" ]] || {
-    echo "--shibumi requires the active bar to be $SHIBUMI_BAR_ID (found: $active_bar)" >&2
+    echo "Shibumi integration requires the active bar to be $SHIBUMI_BAR_ID (found: $active_bar)" >&2
     exit 1
   }
   shibumi_host="$PLUGIN_ROOT/$SHIBUMI_BAR_ID/Bar.qml"
@@ -217,10 +225,13 @@ HOME="$USER_HOME" HERDR_CONFIG="$CONFIG_ROOT/herdr/config.toml" \
   exit 1
 }
 
+if (( SHIBUMI_STYLE )); then
+  link_file "$SHIBUMI_PROFILE" "$HYPR/herdr-drop-integration.lua"
+fi
+
 if (( SHIBUMI )); then
   mkdir -p "$PLUGIN_ROOT"
   install_shibumi_plugin
-  link_file "$SHIBUMI_PROFILE" "$HYPR/herdr-drop-integration.lua"
 fi
 
 if [[ ! -f $HYPR/herdr-drop-settings.lua ]]; then
@@ -274,6 +285,8 @@ fi
 
 if (( SHIBUMI )); then
   printf 'Herdr Drop and its Shibumi connector are installed. Try: herdr-drop toggle\n'
+elif (( SHIBUMI_STYLE )); then
+  printf 'Herdr Drop and its Shibumi visual profile are installed. Add the community plugin next.\n'
 else
   printf 'Herdr Drop installed. Try: herdr-drop toggle\n'
 fi
