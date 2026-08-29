@@ -11,6 +11,7 @@ local settings = {
   border_size = false,
   opacity = false,
   animation_speed = false,
+  close_on_focus_loss = true,
 }
 
 local user_settings = require("hypr.herdr-drop-settings")
@@ -29,6 +30,26 @@ end
 local app_id = "org.omarchy.herdrdrop"
 local special = "herdrdrop"
 local special_workspace = "special:" .. special
+local focused_drop_monitor = nil
+
+-- A click outside the panel focuses either another window or no window. Hide
+-- the special workspace after that focus transition while leaving the Herdr
+-- client and all of its sessions alive.
+local function close_drop_on_focus_loss(window)
+  if window ~= nil and window.class == app_id then
+    focused_drop_monitor = window.monitor
+    return
+  end
+
+  local monitor = focused_drop_monitor
+  focused_drop_monitor = nil
+  if not settings.close_on_focus_loss or monitor == nil then return end
+
+  local active_special = monitor.active_special_workspace
+  if active_special == nil or active_special.name ~= special_workspace then return end
+
+  hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide"))
+end
 
 -- A visible special workspace becomes the launch target for unrelated apps.
 -- Keep this one private by returning every non-Herdr window to the regular
@@ -52,10 +73,12 @@ end
 
 hl.on("window.open", isolate_window)
 hl.on("window.move_to_workspace", isolate_window)
+hl.on("window.active", close_drop_on_focus_loss)
 hl.on("config.reloaded", function()
   for _, window in ipairs(hl.get_workspace_windows(special_workspace) or {}) do
     isolate_window(window)
   end
+  close_drop_on_focus_loss(hl.get_active_window())
 end)
 
 -- Always unbind first: the installer reports the previous owner before this

@@ -16,4 +16,7 @@ return {
   -- Special-workspace animations are global. Leave false to preserve Omarchy.
   -- Set a speed such as 4 to opt into Herdr Drop's slide animation.
   animation_speed = false,
+
+  -- Hide the panel when another window or the desktop receives focus.
+  close_on_focus_loss = true,
 }

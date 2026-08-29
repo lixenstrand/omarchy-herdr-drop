@@ -13,6 +13,8 @@ the two most important agents, and adds a privacy mode for screen sharing.
 Version 1.5 owns its Omarchy-to-Herdr theme hook, consumes Herdr events instead
 of polling every three seconds, validates the Shibumi host contract, and makes
 `doctor` verify the installed connector and its live colors.
+Version 1.6 hides the panel when focus moves to another window or the desktop,
+while keeping the Herdr client and its sessions alive.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
@@ -117,7 +119,8 @@ Set `opacity` to a Hyprland opacity rule such as
 `"0.98 override 0.94 override"`, or `border_size` to an integer. Set
 `animation_speed` to a number such as `4` to opt into the top-edge slide
 animation. Hyprland applies special-workspace animation leaves globally, not
-to one named special workspace. The Shibumi profile enables speed `4`.
+to one named special workspace. The Shibumi profile enables speed `4`. Set
+`close_on_focus_loss = false` to keep the panel open after clicking elsewhere.
 
 The optional first-launch pane title lives here as one plain-text line:
 

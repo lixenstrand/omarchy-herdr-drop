@@ -2,6 +2,7 @@ local source = assert(arg[1], "expected Herdr Drop Lua module path")
 local callbacks = {}
 local moves = {}
 local windows_on_special = {}
+local active_window = nil
 
 package.preload["hypr.herdr-drop-settings"] = function()
   return { animation_speed = false }
@@ -9,6 +10,7 @@ end
 
 _G.hl = {
   dsp = {
+    exec_cmd = function(command) return { command = command } end,
     window = {
       move = function(options) return options end,
     },
@@ -19,6 +21,7 @@ _G.hl = {
     assert(selector == "special:herdrdrop")
     return windows_on_special
   end,
+  get_active_window = function() return active_window end,
   on = function(event, callback) callbacks[event] = callback end,
   unbind = function() end,
 }
@@ -33,11 +36,15 @@ dofile(source)
 assert(callbacks["window.open"], "window.open isolation hook is missing")
 assert(callbacks["window.move_to_workspace"],
   "window.move_to_workspace isolation hook is missing")
+assert(callbacks["window.active"], "window.active dismissal hook is missing")
 assert(callbacks["config.reloaded"], "reload cleanup hook is missing")
 
 local regular = { name = "1" }
 local special = { name = "special:herdrdrop" }
-local monitor = { active_workspace = regular }
+local monitor = {
+  active_workspace = regular,
+  active_special_workspace = special,
+}
 local foreign = {
   class = "chrome-music.youtube.com__-Default",
   workspace = special,
@@ -78,3 +85,18 @@ windows_on_special = {
 callbacks["config.reloaded"]()
 assert(#moves == 3 and moves[3].window == foreign,
   "reload did not clean an existing foreign window from Herdr Drop")
+
+local drop = {
+  class = "org.omarchy.herdrdrop",
+  workspace = special,
+  monitor = monitor,
+}
+callbacks["window.active"](drop)
+callbacks["window.active"](foreign)
+assert(#moves == 4 and moves[4].command == "herdr-drop hide",
+  "focus leaving Herdr Drop did not hide the panel")
+
+monitor.active_special_workspace = nil
+callbacks["window.active"](drop)
+callbacks["window.active"](foreign)
+assert(#moves == 4, "a hidden Herdr Drop panel was toggled back open")
