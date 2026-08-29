@@ -58,17 +58,19 @@ focus.
 ### Connect to the Shibumi bar
 
 If Shibumi is your active bar, add the community plugin after installing the
-core integration:
+core integration and its connected-panel visual profile:
 
 ```bash
+./install.sh --shibumi-style
 omarchy plugin add https://github.com/lixenstrand/omarchy-herdr-drop-plugin.git --enable
 ```
 
 The plugin is maintained and released separately at
 [omarchy-herdr-drop-plugin](https://github.com/lixenstrand/omarchy-herdr-drop-plugin).
 It installs only the Omarchy Shell service and bar widget; this repository's
-installer continues to own the command, keybinding, window rules, and theme
-hook.
+installer continues to own the command, keybinding, window rules, theme hook,
+and the visual profile that gives the panel its 6 px corners, matched top gap,
+1 px themed border, 94% opacity, and top-edge animation.
 
 For development or a single-checkout installation, the bundled copy remains
 available:

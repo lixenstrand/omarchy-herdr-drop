@@ -185,7 +185,7 @@ fi
 printf '%s' "$valid_config" >"$CONFIG_ROOT/herdr/config.toml"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.5.0" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.5.1" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -207,6 +207,11 @@ if "$ROOT/install.sh" --shibumi --no-reload >/dev/null 2>&1; then
   fail "installer accepted an incompatible Shibumi host contract"
 fi
 mv "$SHIBUMI_HOST/Bar.qml.compatible" "$SHIBUMI_HOST/Bar.qml"
+
+"$ROOT/install.sh" --shibumi-style --no-reload >/dev/null
+assert_link_to "$HYPR/herdr-drop-integration.lua" \
+  "$ROOT/integrations/shibumi/herdr-drop-integration.lua"
+assert_absent "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop"
 
 "$ROOT/install.sh" --shibumi --no-reload >/dev/null
 assert_file "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/manifest.json"
@@ -321,4 +326,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.5.0 theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.5.1 theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
