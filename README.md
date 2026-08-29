@@ -5,7 +5,8 @@ to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
 Version 1.2 adds an optional Shibumi bar button and a live connector that makes
-the bar and panel read as one surface while the panel is open.
+the bar and panel read as one surface while the panel is open. Version 1.2.1
+makes the connected panel enter from the bar and leave upward to it.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
@@ -74,14 +75,15 @@ margin, and 12 px rounded corners. Border color, border width, opacity, and
 special-workspace animation inherit Omarchy unless explicitly overridden.
 
 With `--shibumi`, a small final profile changes the top edge to 39 px, radius
-to 6 px, border to 1 px, and opacity to 94% so the foreign window matches the
-bar. Removing the integration restores the user-owned values above.
+to 6 px, border to 1 px, opacity to 94%, and the animation to enter and leave
+through the top edge so the foreign window matches the bar. Removing the
+integration restores the user-owned values above.
 
 Set `opacity` to a Hyprland opacity rule such as
 `"0.98 override 0.94 override"`, or `border_size` to an integer. Set
-`animation_speed` to a number such as `4` to opt into the slide animation.
-Hyprland applies special-workspace animation leaves globally, not to one named
-special workspace.
+`animation_speed` to a number such as `4` to opt into the top-edge slide
+animation. Hyprland applies special-workspace animation leaves globally, not
+to one named special workspace. The Shibumi profile enables speed `4`.
 
 The optional first-launch pane title lives here as one plain-text line:
 

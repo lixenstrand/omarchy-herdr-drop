@@ -5,4 +5,5 @@ return {
   rounding = 6,
   border_size = 1,
   opacity = "0.94 override 0.94 override",
+  animation_speed = 4,
 }

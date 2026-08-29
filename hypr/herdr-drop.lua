@@ -70,6 +70,6 @@ if settings.animation_speed then
     enabled = true,
     speed = settings.animation_speed,
     bezier = "easeOutQuint",
-    style = "slidefadevert bottom",
+    style = "slidefadevert top",
   })
 end
