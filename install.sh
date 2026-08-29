@@ -6,21 +6,31 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
 BIN="${USER_HOME}/.local/bin"
-CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONFIG_ROOT="${XDG_CONFIG_HOME:-$USER_HOME/.config}"
 HYPR="$CONFIG_ROOT/hypr"
 HYPRLAND="$HYPR/hyprland.lua"
 DROP_CONFIG="$CONFIG_ROOT/herdr-drop/config"
+PLUGIN_ROOT="$CONFIG_ROOT/omarchy/plugins"
+SHELL_CONFIG="$CONFIG_ROOT/omarchy/shell.json"
+SHIBUMI_BAR_ID="hancore.shibumi.bar"
+SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
+SHIBUMI_PLUGIN="$SRC/integrations/shibumi/plugin"
+SHIBUMI_PLUGIN_TARGET="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
+SHIBUMI_PROFILE="$SRC/integrations/shibumi/herdr-drop-integration.lua"
 STAMP="$(date +%s)"
 FOCUS_TITLE=""
 FOCUS_TITLE_SET=0
 RELOAD=1
+SHIBUMI=0
 
 usage() {
   cat <<'USAGE'
-Usage: ./install.sh [--focus-title TEXT] [--no-reload]
+Usage: ./install.sh [--focus-title TEXT] [--shibumi] [--no-reload]
 
   --focus-title TEXT  Focus the first Herdr pane whose title contains TEXT
                       when the drop-down client is first created.
+  --shibumi           Add the Herdr bar button and connected-panel styling for
+                      the hancore.shibumi.bar plugin.
   --no-reload         Install files without reloading Hyprland.
 USAGE
 }
@@ -41,6 +51,10 @@ while (( $# > 0 )); do
     RELOAD=0
     shift
     ;;
+  --shibumi)
+    SHIBUMI=1
+    shift
+    ;;
   -h | --help)
     usage
     exit 0
@@ -59,6 +73,31 @@ for command_name in herdr jq hyprctl omarchy omarchy-launch-tui; do
     exit 1
   }
 done
+
+if (( SHIBUMI )); then
+  command -v omarchy-shell >/dev/null 2>&1 || {
+    echo "Missing required command for --shibumi: omarchy-shell" >&2
+    exit 1
+  }
+  [[ -f $SHELL_CONFIG ]] || {
+    echo "Omarchy shell configuration not found: $SHELL_CONFIG" >&2
+    exit 1
+  }
+  active_bar="$(jq -r '.bar.id // "omarchy.bar"' "$SHELL_CONFIG")"
+  [[ $active_bar == "$SHIBUMI_BAR_ID" ]] || {
+    echo "--shibumi requires the active bar to be $SHIBUMI_BAR_ID (found: $active_bar)" >&2
+    exit 1
+  }
+  shibumi_host="$PLUGIN_ROOT/$SHIBUMI_BAR_ID/Bar.qml"
+  [[ -f $shibumi_host ]] || {
+    echo "Shibumi bar entry point not found: $shibumi_host" >&2
+    exit 1
+  }
+  grep -qF 'function publishConnectedPanel' "$shibumi_host" || {
+    echo "The installed Shibumi bar does not expose the connected-panel API" >&2
+    exit 1
+  }
+fi
 
 [[ -f $HYPRLAND ]] || {
   echo "Omarchy Hyprland configuration not found: $HYPRLAND" >&2
@@ -86,12 +125,61 @@ link_file() {
   if [[ -L $target && $(readlink -f -- "$target") == $(readlink -f -- "$source") ]]; then
     return 0
   fi
+  if [[ -d $target && ! -L $target ]]; then
+    echo "Refusing to replace directory: $target" >&2
+    exit 1
+  fi
   backup "$target"
   ln -sfn -- "$source" "$target"
 }
 
+install_shibumi_plugin() {
+  local target="$SHIBUMI_PLUGIN_TARGET"
+  local marker=".herdr-drop-owned"
+  local plugin_files=(manifest.json BarWidget.qml Service.qml "$marker")
+  local matches=1 file backup_root backup_target
+
+  if [[ -L $target ]]; then
+    if [[ $(readlink -f -- "$target") == $(readlink -f -- "$SHIBUMI_PLUGIN") ]]; then
+      unlink -- "$target"
+    else
+      echo "Refusing to replace plugin link not owned by this checkout: $target" >&2
+      exit 1
+    fi
+  elif [[ -e $target ]]; then
+    [[ -d $target && -f $target/$marker ]] \
+      && grep -qFx -- "$SHIBUMI_WIDGET_ID" "$target/$marker" || {
+        echo "Refusing to replace plugin directory not owned by Herdr Drop: $target" >&2
+        exit 1
+      }
+    for file in "${plugin_files[@]}"; do
+      if ! cmp -s -- "$SHIBUMI_PLUGIN/$file" "$target/$file"; then
+        matches=0
+        break
+      fi
+    done
+    if (( matches )); then return 0; fi
+    backup_root="$CONFIG_ROOT/herdr-drop/backups"
+    mkdir -p "$backup_root"
+    backup_target="$backup_root/shibumi-plugin.$STAMP"
+    while [[ -e $backup_target ]]; do backup_target="$backup_target.1"; done
+    cp -a -- "$target" "$backup_target"
+  fi
+
+  mkdir -p "$target"
+  for file in "${plugin_files[@]}"; do
+    install -m 644 "$SHIBUMI_PLUGIN/$file" "$target/$file"
+  done
+}
+
 link_file "$SRC/bin/herdr-drop" "$BIN/herdr-drop"
 link_file "$SRC/hypr/herdr-drop.lua" "$HYPR/herdr-drop.lua"
+
+if (( SHIBUMI )); then
+  mkdir -p "$PLUGIN_ROOT"
+  install_shibumi_plugin
+  link_file "$SHIBUMI_PROFILE" "$HYPR/herdr-drop-integration.lua"
+fi
 
 if [[ ! -f $HYPR/herdr-drop-settings.lua ]]; then
   install -m 600 "$SRC/hypr/herdr-drop-settings.lua" \
@@ -130,4 +218,13 @@ if (( RELOAD )); then
   fi
 fi
 
-printf 'Herdr Drop installed. Try: herdr-drop toggle\n'
+if (( SHIBUMI )); then
+  omarchy-shell shell rescanPlugins >/dev/null
+  omarchy bar put "$SHIBUMI_WIDGET_ID" --section center >/dev/null
+fi
+
+if (( SHIBUMI )); then
+  printf 'Herdr Drop and its Shibumi connector are installed. Try: herdr-drop toggle\n'
+else
+  printf 'Herdr Drop installed. Try: herdr-drop toggle\n'
+fi

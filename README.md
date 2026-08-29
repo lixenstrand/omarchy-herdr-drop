@@ -4,18 +4,20 @@ A persistent Herdr client in a drop-down Hyprland window. Press `SUPER + A`
 to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
-Version 1.1 adds a roomier theme-aware panel, rounded corners, opt-in visual
-overrides, and a built-in installation doctor.
+Version 1.2 adds an optional Shibumi bar button and a live connector that makes
+the bar and panel read as one surface while the panel is open.
 
-Herdr Drop is an Omarchy integration, not a Quickshell plugin. It installs the
-Hyprland window rule and keybinding that `omarchy plugin add` intentionally
-does not manage.
+The core is an Omarchy and Hyprland integration. The optional bar component is
+a Quickshell plugin; the installer still owns the window rule and keybinding
+that `omarchy plugin add` intentionally does not manage.
 
 ## Requirements
 
 - Omarchy Quattro with Lua-based Hyprland configuration
 - [Herdr](https://herdr.dev/) available as `herdr`
 - `jq`, `hyprctl`, `omarchy`, and `omarchy-launch-tui`
+- Optional connector: the `hancore.shibumi.bar` plugin with its connected-panel
+  API
 
 ## Install
 
@@ -44,6 +46,21 @@ To focus a specific pane when the drop-down client is first created:
 The title is matched as plain text. Leave it unset to keep Herdr's current
 focus.
 
+### Connect to the Shibumi bar
+
+If Shibumi is your active bar, install the bar button and matching panel
+profile too:
+
+```bash
+./install.sh --shibumi
+```
+
+The button toggles Herdr Drop. While the panel is visible, Shibumi draws the
+caret and connector over the real panel border; hiding the panel removes both.
+The QML plugin is installed as an owned directory because Qt rejects a whole
+plugin directory reached through a symlink. The base installation remains
+independent of Shibumi.
+
 ## Configure
 
 Edit the key, geometry, or animation speed here:
@@ -55,6 +72,10 @@ Edit the key, geometry, or animation speed here:
 The defaults use 82% of the monitor width, 68% of its height, a 24 px top
 margin, and 12 px rounded corners. Border color, border width, opacity, and
 special-workspace animation inherit Omarchy unless explicitly overridden.
+
+With `--shibumi`, a small final profile changes the top edge to 39 px, radius
+to 6 px, border to 1 px, and opacity to 94% so the foreign window matches the
+bar. Removing the integration restores the user-owned values above.
 
 Set `opacity` to a Hyprland opacity rule such as
 `"0.98 override 0.94 override"`, or `border_size` to an integer. Set
@@ -85,8 +106,10 @@ herdr-drop version # print the installed version
 ./uninstall.sh
 ```
 
-This removes only symlinks owned by this checkout and the marked `require`
-block in `hyprland.lua`. User settings remain in place. To remove those too:
+This removes only symlinks owned by this checkout, the optional Shibumi widget,
+and the marked `require` block in `hyprland.lua`. User settings remain in
+place. The removed widget directory is kept under
+`~/.config/herdr-drop/backups/`. To remove user settings too:
 
 ```bash
 ./uninstall.sh --purge

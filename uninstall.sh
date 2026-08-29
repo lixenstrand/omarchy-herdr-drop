@@ -6,10 +6,15 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
 BIN="${USER_HOME}/.local/bin"
-CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONFIG_ROOT="${XDG_CONFIG_HOME:-$USER_HOME/.config}"
 HYPR="$CONFIG_ROOT/hypr"
 HYPRLAND="$HYPR/hyprland.lua"
 DROP_CONFIG="$CONFIG_ROOT/herdr-drop/config"
+PLUGIN_ROOT="$CONFIG_ROOT/omarchy/plugins"
+SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
+SHIBUMI_PLUGIN="$SRC/integrations/shibumi/plugin"
+SHIBUMI_PLUGIN_TARGET="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
+SHIBUMI_PROFILE="$SRC/integrations/shibumi/herdr-drop-integration.lua"
 STAMP="$(date +%s)"
 PURGE=0
 RELOAD=1
@@ -57,6 +62,45 @@ remove_owned_link() {
 
 remove_owned_link "$BIN/herdr-drop" "$SRC/bin/herdr-drop"
 remove_owned_link "$HYPR/herdr-drop.lua" "$SRC/hypr/herdr-drop.lua"
+
+shibumi_owned=0
+shibumi_is_directory=0
+if [[ -L $SHIBUMI_PLUGIN_TARGET ]] \
+  && [[ $(readlink -f -- "$SHIBUMI_PLUGIN_TARGET") == $(readlink -f -- "$SHIBUMI_PLUGIN") ]]; then
+  shibumi_owned=1
+elif [[ -d $SHIBUMI_PLUGIN_TARGET && ! -L $SHIBUMI_PLUGIN_TARGET ]] \
+  && [[ -f $SHIBUMI_PLUGIN_TARGET/.herdr-drop-owned ]] \
+  && grep -qFx -- "$SHIBUMI_WIDGET_ID" "$SHIBUMI_PLUGIN_TARGET/.herdr-drop-owned"; then
+  shibumi_owned=1
+  shibumi_is_directory=1
+fi
+
+if (( shibumi_owned )); then
+  if command -v omarchy >/dev/null 2>&1 \
+    && command -v omarchy-shell >/dev/null 2>&1; then
+    if ! omarchy plugin disable "$SHIBUMI_WIDGET_ID" >/dev/null 2>&1; then
+      echo "Could not remove the Herdr widget from the running bar; its files will still be removed." >&2
+    fi
+  fi
+  if (( shibumi_is_directory )); then
+    plugin_backup_root="$CONFIG_ROOT/herdr-drop/backups"
+    mkdir -p "$plugin_backup_root"
+    plugin_backup_target="$plugin_backup_root/shibumi-plugin.uninstalled.$STAMP"
+    while [[ -e $plugin_backup_target ]]; do
+      plugin_backup_target="$plugin_backup_target.1"
+    done
+    mv -- "$SHIBUMI_PLUGIN_TARGET" "$plugin_backup_target"
+  else
+    unlink -- "$SHIBUMI_PLUGIN_TARGET"
+  fi
+  if command -v omarchy-shell >/dev/null 2>&1; then
+    omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+  fi
+elif [[ -e $SHIBUMI_PLUGIN_TARGET || -L $SHIBUMI_PLUGIN_TARGET ]]; then
+  printf 'Preserved plugin not owned by this checkout: %s\n' "$SHIBUMI_PLUGIN_TARGET" >&2
+fi
+
+remove_owned_link "$HYPR/herdr-drop-integration.lua" "$SHIBUMI_PROFILE"
 
 if [[ -f $HYPRLAND ]]; then
   begin_count="$(grep -cFx -- '-- BEGIN herdr-drop' "$HYPRLAND" || true)"

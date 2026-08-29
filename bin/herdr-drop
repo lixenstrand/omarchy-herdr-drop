@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
@@ -13,6 +13,12 @@ HYPR="$CONFIG_ROOT/hypr"
 HYPRLAND="$HYPR/hyprland.lua"
 SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+PLUGIN_ROOT="$CONFIG_ROOT/omarchy/plugins"
+SHELL_CONFIG="$CONFIG_ROOT/omarchy/shell.json"
+SHIBUMI_BAR_ID="hancore.shibumi.bar"
+SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
+SHIBUMI_PLUGIN="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
+SHIBUMI_PROFILE="$HYPR/herdr-drop-integration.lua"
 
 # The config is user-owned plain text. Keeping a machine-specific title
 # outside this script makes the drop-down reusable without executing config.
@@ -88,6 +94,8 @@ launch_window() {
 
 doctor() {
   local failures=0 missing=() errors bind_count clients
+  local integration_present=0 connector_state connector_service_state
+  local connected=0 active_bar
 
   pass() { printf 'PASS  %s\n' "$*"; }
   info() { printf 'INFO  %s\n' "$*"; }
@@ -129,6 +137,83 @@ doctor() {
     pass "User settings exist"
   else
     fail "User settings are missing: $HYPR/herdr-drop-settings.lua"
+  fi
+
+  if [[ -e $SHIBUMI_PLUGIN || -L $SHIBUMI_PLUGIN \
+    || -e $SHIBUMI_PROFILE || -L $SHIBUMI_PROFILE ]]; then
+    integration_present=1
+  fi
+
+  if (( integration_present )); then
+    if ! command -v omarchy-shell >/dev/null 2>&1; then
+      fail "Missing Shibumi integration command: omarchy-shell"
+    else
+      connector_service_state="$(omarchy-shell "$SHIBUMI_WIDGET_ID" state 2>/dev/null || true)"
+      if jq -e '.hasBar == true' <<<"$connector_service_state" >/dev/null 2>&1; then
+        pass "Shibumi connector service is active"
+      else
+        fail "Shibumi connector service is not active"
+      fi
+    fi
+
+    if [[ -d $SHIBUMI_PLUGIN && ! -L $SHIBUMI_PLUGIN ]] \
+      && [[ -f $SHIBUMI_PLUGIN/.herdr-drop-owned ]] \
+      && grep -qFx -- "$SHIBUMI_WIDGET_ID" "$SHIBUMI_PLUGIN/.herdr-drop-owned" \
+      && cmp -s -- "$SHIBUMI_PLUGIN/manifest.json" "$REPO_ROOT/integrations/shibumi/plugin/manifest.json" \
+      && cmp -s -- "$SHIBUMI_PLUGIN/BarWidget.qml" "$REPO_ROOT/integrations/shibumi/plugin/BarWidget.qml" \
+      && cmp -s -- "$SHIBUMI_PLUGIN/Service.qml" "$REPO_ROOT/integrations/shibumi/plugin/Service.qml"; then
+      pass "Shibumi widget files match this checkout"
+    else
+      fail "Shibumi widget is missing or differs from this checkout: $SHIBUMI_PLUGIN"
+    fi
+
+    if [[ -L $SHIBUMI_PROFILE ]] \
+      && [[ $(readlink -f -- "$SHIBUMI_PROFILE") == "$REPO_ROOT/integrations/shibumi/herdr-drop-integration.lua" ]]; then
+      pass "Shibumi geometry profile belongs to this checkout"
+    else
+      fail "Shibumi geometry profile is missing or points elsewhere: $SHIBUMI_PROFILE"
+    fi
+
+    if [[ -f $SHELL_CONFIG ]]; then
+      active_bar="$(jq -r '.bar.id // "omarchy.bar"' "$SHELL_CONFIG" 2>/dev/null)"
+      if [[ $active_bar == "$SHIBUMI_BAR_ID" ]]; then
+        pass "Shibumi is the active bar"
+      else
+        fail "Shibumi integration is installed but the active bar is $active_bar"
+      fi
+
+      if jq -e --arg id "$SHIBUMI_WIDGET_ID" '
+        [((.bar.layout.left // []) + (.bar.layout.center // [])
+          + (.bar.layout.right // []))[]
+          | if type == "object" then .id else . end]
+        | index($id) != null
+      ' "$SHELL_CONFIG" >/dev/null 2>&1; then
+        pass "Herdr widget is on the bar"
+      else
+        fail "Herdr widget is not present in the bar layout"
+      fi
+    else
+      fail "Omarchy shell configuration is missing: $SHELL_CONFIG"
+    fi
+
+    if special_visible && command -v omarchy-shell >/dev/null 2>&1; then
+      for _ in $(seq 1 10); do
+        connector_state="$(omarchy-shell shibumi-suite connectedPanelState 2>/dev/null || true)"
+        if jq -e '.active == true and (.screen | length > 0)
+          and (.reveal > 0.99)' <<<"$connector_state" >/dev/null 2>&1; then
+          connected=1
+          break
+        fi
+        sleep 0.1
+      done
+      if (( connected )); then
+        pass "Visible panel is connected to the bar"
+      else
+        fail "Panel is visible but the Shibumi connector is inactive"
+      fi
+    else
+      info "Shibumi connector is ready; open the panel to exercise it"
+    fi
   fi
 
   if command -v hyprctl >/dev/null 2>&1; then

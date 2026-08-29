@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.lixenstrand.herdr-drop",
+  "name": "Herdr Drop",
+  "version": "1.2.0",
+  "author": "lixenstrand",
+  "license": "MIT",
+  "description": "Bar button and connected-panel bridge for Herdr Drop.",
+  "kinds": ["bar-widget", "service"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "service": "Service.qml"
+  },
+  "barWidget": {
+    "displayName": "Herdr Drop",
+    "description": "Toggle Herdr Drop and connect it to a compatible Shibumi bar",
+    "category": "System",
+    "defaultSection": "center",
+    "allowMultiple": false
+  }
+}

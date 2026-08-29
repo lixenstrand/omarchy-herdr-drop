@@ -22,13 +22,33 @@ assert_link_to() {
 for script in "$ROOT/install.sh" "$ROOT/uninstall.sh" "$ROOT/bin/herdr-drop"; do
   bash -n "$script"
 done
+jq empty "$ROOT/integrations/shibumi/plugin/manifest.json"
+luac -p "$ROOT/hypr/herdr-drop.lua" \
+  "$ROOT/hypr/herdr-drop-settings.lua" \
+  "$ROOT/integrations/shibumi/herdr-drop-integration.lua"
+if command -v qmllint >/dev/null 2>&1; then
+  qmllint -I /usr/share/omarchy/shell \
+    "$ROOT/integrations/shibumi/plugin/BarWidget.qml" >/dev/null 2>&1
+  qmllint -I /usr/share/omarchy/shell \
+    "$ROOT/integrations/shibumi/plugin/Service.qml" >/dev/null 2>&1
+fi
 
 HOME_DIR="$SANDBOX/home"
 CONFIG_ROOT="$HOME_DIR/.config"
 HYPR="$CONFIG_ROOT/hypr"
 FAKE_BIN="$SANDBOX/bin"
-mkdir -p "$HYPR" "$FAKE_BIN"
+PLUGIN_ROOT="$CONFIG_ROOT/omarchy/plugins"
+SHIBUMI_HOST="$PLUGIN_ROOT/hancore.shibumi.bar"
+TEST_LOG="$SANDBOX/commands.log"
+mkdir -p "$HYPR" "$FAKE_BIN" "$SHIBUMI_HOST"
 printf '%s\n' 'require("default.hypr.omarchy")' >"$HYPR/hyprland.lua"
+printf '%s\n' \
+  'import QtQuick' \
+  'Item { function publishConnectedPanel() { return true } }' \
+  >"$SHIBUMI_HOST/Bar.qml"
+printf '%s\n' \
+  '{"bar":{"id":"hancore.shibumi.bar","layout":{"left":[],"center":["io.github.lixenstrand.herdr-drop"],"right":[]}}}' \
+  >"$CONFIG_ROOT/omarchy/shell.json"
 
 for command_name in herdr omarchy-launch-tui; do
   printf '%s\n' '#!/bin/sh' 'exit 0' >"$FAKE_BIN/$command_name"
@@ -40,16 +60,32 @@ printf '%s\n' \
   '  "configerrors") exit 0 ;;' \
   '  "-j binds") printf '\''%s\n'\'' '\''[{"description":"Herdr drop-down"}]'\'' ;;' \
   '  "-j clients") printf '\''%s\n'\'' '\''[]'\'' ;;' \
+  '  "-j monitors") printf '\''%s\n'\'' '\''[]'\'' ;;' \
   '  *) printf '\''%s\n'\'' '\''ok'\'' ;;' \
   'esac' >"$FAKE_BIN/hyprctl"
 chmod 755 "$FAKE_BIN/hyprctl"
-printf '%s\n' '#!/bin/sh' "printf '%s\\n' 'SUPER + A → Existing action'" \
-  >"$FAKE_BIN/omarchy"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'printf '\''omarchy %s\n'\'' "$*" >>"${TEST_LOG:?}"' \
+  'case "$*" in' \
+  '  "menu keybindings --print") printf '\''%s\n'\'' '\''SUPER + A → Existing action'\'' ;;' \
+  '  *) exit 0 ;;' \
+  'esac' >"$FAKE_BIN/omarchy"
 chmod 755 "$FAKE_BIN/omarchy"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'printf '\''omarchy-shell %s\n'\'' "$*" >>"${TEST_LOG:?}"' \
+  'case "$*" in' \
+  '  "shibumi-suite connectedPanelState") printf '\''%s\n'\'' '\''{"active":false,"screen":"","x":0,"reveal":0}'\'' ;;' \
+  '  "io.github.lixenstrand.herdr-drop state") printf '\''%s\n'\'' '\''{"visible":false,"hasBar":true}'\'' ;;' \
+  '  *) printf '\''%s\n'\'' '\''ok'\'' ;;' \
+  'esac' >"$FAKE_BIN/omarchy-shell"
+chmod 755 "$FAKE_BIN/omarchy-shell"
 ln -s "$(command -v jq)" "$FAKE_BIN/jq"
 
 export HERDR_DROP_HOME="$HOME_DIR"
 export XDG_CONFIG_HOME="$CONFIG_ROOT"
+export TEST_LOG
 export PATH="$FAKE_BIN:/usr/bin:/bin"
 
 "$ROOT/install.sh" --focus-title "Mission Control" --no-reload >/dev/null
@@ -72,7 +108,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.1.0" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.0" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -87,11 +123,37 @@ printf '%s\n' 'return { key = "SUPER + H" }' >"$HYPR/herdr-drop-settings.lua"
 backup_count="$(find "$CONFIG_ROOT/herdr-drop" -maxdepth 1 -name 'config.bak.*' | wc -l)"
 [[ $backup_count == 0 ]] || fail "idempotent rerun created a redundant backup"
 
+"$ROOT/install.sh" --shibumi --no-reload >/dev/null
+assert_file "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/manifest.json"
+assert_file "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/.herdr-drop-owned"
+cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/BarWidget.qml" \
+  "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
+  || fail "installed Shibumi widget differs from this checkout"
+cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Service.qml" \
+  "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  || fail "installed Shibumi connector differs from this checkout"
+"$ROOT/install.sh" --shibumi --no-reload >/dev/null
+if compgen -G "$CONFIG_ROOT/herdr-drop/backups/shibumi-plugin.*" >/dev/null; then
+  fail "idempotent Shibumi rerun created a redundant backup"
+fi
+assert_link_to "$HYPR/herdr-drop-integration.lua" \
+  "$ROOT/integrations/shibumi/herdr-drop-integration.lua"
+rg -q '^omarchy-shell shell rescanPlugins$' "$TEST_LOG" \
+  || fail "Shibumi install did not rescan plugins"
+rg -q '^omarchy bar put io.github.lixenstrand.herdr-drop --section center$' \
+  "$TEST_LOG" || fail "Shibumi install did not place the bar widget"
+"$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
+  || fail "doctor rejected a healthy Shibumi integration"
+
 "$ROOT/uninstall.sh" --no-reload >/dev/null
 assert_absent "$HOME_DIR/.local/bin/herdr-drop"
 assert_absent "$HYPR/herdr-drop.lua"
+assert_absent "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop"
+assert_absent "$HYPR/herdr-drop-integration.lua"
 assert_file "$HYPR/herdr-drop-settings.lua"
 assert_file "$CONFIG_ROOT/herdr-drop/config"
+rg -q '^omarchy plugin disable io.github.lixenstrand.herdr-drop$' "$TEST_LOG" \
+  || fail "uninstaller did not disable the Shibumi widget"
 ! grep -qF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua" \
   || fail "uninstaller left the Hyprland require behind"
 
@@ -104,4 +166,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.1 install, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.2 base and Shibumi install, doctor, rerun, uninstall, and purge\n'

@@ -18,6 +18,14 @@ if type(user_settings) == "table" then
   for key, value in pairs(user_settings) do settings[key] = value end
 end
 
+-- Optional integrations may apply a small final geometry/style profile while
+-- keeping the base package independent of a particular bar implementation.
+local integration_ok, integration_settings =
+  pcall(require, "hypr.herdr-drop-integration")
+if integration_ok and type(integration_settings) == "table" then
+  for key, value in pairs(integration_settings) do settings[key] = value end
+end
+
 local app_id = "org.omarchy.herdrdrop"
 local special = "herdrdrop"
 
