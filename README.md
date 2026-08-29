@@ -5,8 +5,10 @@ to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
 Version 1.2 adds an optional Shibumi bar button and a live connector that makes
-the bar and panel read as one surface while the panel is open. Version 1.2.3
-makes the panel leave upward and clears the bar caret as closing begins.
+the bar and panel read as one surface while the panel is open. Version 1.3 adds
+a sheep icon that reacts with the panel, uses live agent state for its accent
+and attention dot, and shows concrete Herdr workspace and agent details on
+hover.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
@@ -58,6 +60,10 @@ profile too:
 
 The button toggles Herdr Drop. While the panel is visible, Shibumi draws the
 caret and connector over the real panel border; hiding the panel removes both.
+The sheep briefly hops when the panel opens and leaves upward when it closes.
+Its accent means a detected Herdr agent is working, while the dot means an
+agent is done or blocked. Hovering reports the focused workspace, the most
+important agent state with its real terminal task, and current totals.
 The QML plugin is installed as an owned directory because Qt rejects a whole
 plugin directory reached through a symlink. The base installation remains
 independent of Shibumi.
