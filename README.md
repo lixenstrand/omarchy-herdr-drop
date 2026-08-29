@@ -57,8 +57,21 @@ focus.
 
 ### Connect to the Shibumi bar
 
-If Shibumi is your active bar, install the bar button and matching panel
-profile too:
+If Shibumi is your active bar, add the community plugin after installing the
+core integration:
+
+```bash
+omarchy plugin add https://github.com/lixenstrand/omarchy-herdr-drop-plugin.git --enable
+```
+
+The plugin is maintained and released separately at
+[omarchy-herdr-drop-plugin](https://github.com/lixenstrand/omarchy-herdr-drop-plugin).
+It installs only the Omarchy Shell service and bar widget; this repository's
+installer continues to own the command, keybinding, window rules, and theme
+hook.
+
+For development or a single-checkout installation, the bundled copy remains
+available:
 
 ```bash
 ./install.sh --shibumi
@@ -72,11 +85,10 @@ Its accent means a detected Herdr agent is working. A dot means an agent is
 done, `!` means an agent is blocked, and a dimmed sheep means the Herdr server
 is unavailable. Hovering reports the focused workspace, up to two agents in
 priority order with their real terminal tasks, and current totals.
-The QML plugin is installed as an owned directory because Qt rejects a whole
-plugin directory reached through a symlink. The base installation remains
-independent of Shibumi. When that owned plugin changes, the installer restarts
-Omarchy Shell so its long-lived service and bar widget cannot run different
-versions; an unchanged reinstall only performs a lightweight plugin rescan.
+The base installation remains independent of Shibumi. When the bundled plugin
+changes, the installer restarts Omarchy Shell so its long-lived service and bar
+widget cannot run different versions; an unchanged reinstall only performs a
+lightweight plugin rescan.
 Herdr status updates arrive through one persistent socket subscription. A
 60-second health poll runs while connected; a 15-second fallback is used if
 the event stream is unavailable. Hyprland geometry follows compositor events
