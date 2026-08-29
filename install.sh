@@ -17,6 +17,12 @@ SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
 SHIBUMI_PLUGIN="$SRC/integrations/shibumi/plugin"
 SHIBUMI_PLUGIN_TARGET="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
 SHIBUMI_PROFILE="$SRC/integrations/shibumi/herdr-drop-integration.lua"
+SHIBUMI_HOST_CONTRACT_VERSION=1
+THEME_TEMPLATE="$SRC/integrations/omarchy/themed/herdr.toml.tpl"
+THEME_HOOK="$SRC/integrations/omarchy/hooks/herdr-theme"
+THEMED_ROOT="$CONFIG_ROOT/omarchy/themed"
+THEME_HOOK_ROOT="$CONFIG_ROOT/omarchy/hooks/theme-set.d"
+shibumi_plugin_changed=0
 STAMP="$(date +%s)"
 FOCUS_TITLE=""
 FOCUS_TITLE_SET=0
@@ -75,10 +81,12 @@ for command_name in herdr jq hyprctl omarchy omarchy-launch-tui; do
 done
 
 if (( SHIBUMI )); then
-  command -v omarchy-shell >/dev/null 2>&1 || {
-    echo "Missing required command for --shibumi: omarchy-shell" >&2
-    exit 1
-  }
+  for command_name in omarchy-shell socat; do
+    command -v "$command_name" >/dev/null 2>&1 || {
+      echo "Missing required command for --shibumi: $command_name" >&2
+      exit 1
+    }
+  done
   [[ -f $SHELL_CONFIG ]] || {
     echo "Omarchy shell configuration not found: $SHELL_CONFIG" >&2
     exit 1
@@ -93,10 +101,20 @@ if (( SHIBUMI )); then
     echo "Shibumi bar entry point not found: $shibumi_host" >&2
     exit 1
   }
-  grep -qF 'function publishConnectedPanel' "$shibumi_host" || {
-    echo "The installed Shibumi bar does not expose the connected-panel API" >&2
+  shibumi_contract_version="$(sed -nE \
+    's/.*property[[:space:]]+int[[:space:]]+shibumiHostContractVersion[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+    "$shibumi_host" | head -n 1)"
+  if [[ ! $shibumi_contract_version =~ ^[0-9]+$ ]] \
+    || (( shibumi_contract_version < SHIBUMI_HOST_CONTRACT_VERSION )); then
+    echo "Incompatible Shibumi connected-panel contract: need version $SHIBUMI_HOST_CONTRACT_VERSION or newer, found ${shibumi_contract_version:-none}" >&2
     exit 1
-  }
+  fi
+  for api_function in publishConnectedPanel clearConnectedPanel requestPopout releasePopout; do
+    grep -qF "function $api_function" "$shibumi_host" || {
+      echo "Incompatible Shibumi contract v$shibumi_contract_version: missing $api_function" >&2
+      exit 1
+    }
+  done
 fi
 
 [[ -f $HYPRLAND ]] || {
@@ -112,7 +130,8 @@ else
   echo "SUPER+A had no previous binding."
 fi
 
-mkdir -p "$BIN" "$HYPR" "$(dirname "$DROP_CONFIG")"
+mkdir -p "$BIN" "$HYPR" "$(dirname "$DROP_CONFIG")" \
+  "$THEMED_ROOT" "$THEME_HOOK_ROOT"
 
 backup() {
   local target="$1"
@@ -136,7 +155,7 @@ link_file() {
 install_shibumi_plugin() {
   local target="$SHIBUMI_PLUGIN_TARGET"
   local marker=".herdr-drop-owned"
-  local plugin_files=(manifest.json BarWidget.qml Service.qml Status.js "$marker")
+  local plugin_files=(manifest.json BarWidget.qml Service.qml Status.js ThemedConnector.qml "$marker")
   local matches=1 file backup_root backup_target
 
   if [[ -L $target ]]; then
@@ -170,10 +189,33 @@ install_shibumi_plugin() {
   for file in "${plugin_files[@]}"; do
     install -m 644 "$SHIBUMI_PLUGIN/$file" "$target/$file"
   done
+  shibumi_plugin_changed=1
 }
 
 link_file "$SRC/bin/herdr-drop" "$BIN/herdr-drop"
 link_file "$SRC/hypr/herdr-drop.lua" "$HYPR/herdr-drop.lua"
+link_file "$THEME_TEMPLATE" "$THEMED_ROOT/herdr-drop.toml.tpl"
+link_file "$THEME_HOOK" "$THEME_HOOK_ROOT/herdr-drop-theme"
+
+# Remove only the unpublished v1.5 development names owned by this checkout.
+# The public names are unique so another Herdr theme integration is untouched.
+for legacy_target in "$THEMED_ROOT/herdr.toml.tpl" \
+  "$THEME_HOOK_ROOT/herdr-theme"; do
+  if [[ -L $legacy_target ]] \
+    && { [[ $(readlink -f -- "$legacy_target") == $(readlink -f -- "$THEME_TEMPLATE") ]] \
+      || [[ $(readlink -f -- "$legacy_target") == $(readlink -f -- "$THEME_HOOK") ]]; }; then
+    unlink -- "$legacy_target"
+  fi
+done
+
+# Apply the current palette immediately. Later theme changes call the same
+# hook through Omarchy's theme-set lifecycle.
+HOME="$USER_HOME" HERDR_CONFIG="$CONFIG_ROOT/herdr/config.toml" \
+  OMARCHY_THEME_DIR="$USER_HOME/.local/state/omarchy/current/theme" \
+  "$THEME_HOOK" || {
+  echo "Could not synchronize Herdr with the active Omarchy theme" >&2
+  exit 1
+}
 
 if (( SHIBUMI )); then
   mkdir -p "$PLUGIN_ROOT"
@@ -219,7 +261,14 @@ if (( RELOAD )); then
 fi
 
 if (( SHIBUMI )); then
-  omarchy-shell shell rescanPlugins >/dev/null
+  # A plugin rescan refreshes widgets but keeps an already-instantiated
+  # Service.qml alive. Restart only when the owned payload changed so service
+  # and widget code always come from the same version.
+  if (( shibumi_plugin_changed )); then
+    omarchy restart shell >/dev/null
+  else
+    omarchy-shell shell rescanPlugins >/dev/null
+  fi
   omarchy bar put "$SHIBUMI_WIDGET_ID" --section center >/dev/null
 fi
 

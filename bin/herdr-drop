@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.4.0"
+VERSION="1.5.0"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
@@ -19,6 +19,10 @@ SHIBUMI_BAR_ID="hancore.shibumi.bar"
 SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
 SHIBUMI_PLUGIN="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
 SHIBUMI_PROFILE="$HYPR/herdr-drop-integration.lua"
+SHIBUMI_HOST_CONTRACT_VERSION=1
+THEME_TEMPLATE="$CONFIG_ROOT/omarchy/themed/herdr-drop.toml.tpl"
+THEME_HOOK="$CONFIG_ROOT/omarchy/hooks/theme-set.d/herdr-drop-theme"
+THEME_DIR="$USER_HOME/.local/state/omarchy/current/theme"
 
 # The config is user-owned plain text. Keeping a machine-specific title
 # outside this script makes the drop-down reusable without executing config.
@@ -106,11 +110,46 @@ launch_window() {
 doctor() {
   local failures=0 missing=() errors bind_count clients
   local integration_present=0 connector_state connector_service_state
-  local connected=0 active_bar
+  local connected=0 active_bar host_version
+  local expected_surface expected_stroke runtime_surface runtime_stroke
 
   pass() { printf 'PASS  %s\n' "$*"; }
   info() { printf 'INFO  %s\n' "$*"; }
   fail() { printf 'FAIL  %s\n' "$*"; failures=$((failures + 1)); }
+
+  toml_value() {
+    local file="$1" section="$2" key="$3"
+    awk -F= -v wanted_section="$section" -v wanted_key="$key" '
+      /^\[[^]]+\][[:space:]]*$/ {
+        current = $0
+        gsub(/^\[|\][[:space:]]*$/, "", current)
+        next
+      }
+      current == wanted_section && $1 ~ "^[[:space:]]*" wanted_key "[[:space:]]*$" {
+        value = $2
+        sub(/^[[:space:]]*/, "", value)
+        sub(/[[:space:]]+$/, "", value)
+        gsub(/^"|"$/, "", value)
+        print tolower(value)
+        exit
+      }
+    ' "$file" 2>/dev/null
+  }
+
+  flat_toml_value() {
+    local file="$1" key="$2"
+    awk -F= -v wanted_key="$key" '
+      /^\[/ { exit }
+      $1 ~ "^[[:space:]]*" wanted_key "[[:space:]]*$" {
+        value = $2
+        sub(/^[[:space:]]*/, "", value)
+        sub(/[[:space:]]+$/, "", value)
+        gsub(/^"|"$/, "", value)
+        print tolower(value)
+        exit
+      }
+    ' "$file" 2>/dev/null
+  }
 
   printf 'Herdr Drop doctor %s\n' "$VERSION"
 
@@ -150,6 +189,27 @@ doctor() {
     fail "User settings are missing: $HYPR/herdr-drop-settings.lua"
   fi
 
+  if [[ -L $THEME_TEMPLATE ]] \
+    && [[ $(readlink -f -- "$THEME_TEMPLATE") == "$REPO_ROOT/integrations/omarchy/themed/herdr.toml.tpl" ]] \
+    && [[ -L $THEME_HOOK ]] \
+    && [[ $(readlink -f -- "$THEME_HOOK") == "$REPO_ROOT/integrations/omarchy/hooks/herdr-theme" ]]; then
+    pass "Omarchy theme template and hook belong to this checkout"
+  else
+    fail "Omarchy theme synchronization is missing or points elsewhere"
+  fi
+
+  if [[ -r $THEME_DIR/colors.toml && -r $CONFIG_ROOT/herdr/config.toml ]]; then
+    expected_surface="$(flat_toml_value "$THEME_DIR/colors.toml" background)"
+    runtime_surface="$(toml_value "$CONFIG_ROOT/herdr/config.toml" theme.custom panel_bg)"
+    if [[ -n $expected_surface && $runtime_surface == "$expected_surface" ]]; then
+      pass "Herdr palette matches the active Omarchy theme"
+    else
+      fail "Herdr palette is stale: expected ${expected_surface:-unknown}, found ${runtime_surface:-missing}"
+    fi
+  else
+    info "Herdr theme files are ready; no active palette was available to compare"
+  fi
+
   if [[ -e $SHIBUMI_PLUGIN || -L $SHIBUMI_PLUGIN \
     || -e $SHIBUMI_PROFILE || -L $SHIBUMI_PROFILE ]]; then
     integration_present=1
@@ -160,10 +220,19 @@ doctor() {
       fail "Missing Shibumi integration command: omarchy-shell"
     else
       connector_service_state="$(omarchy-shell "$SHIBUMI_WIDGET_ID" state 2>/dev/null || true)"
-      if jq -e '.hasBar == true' <<<"$connector_service_state" >/dev/null 2>&1; then
+      if jq -e --argjson contract "$SHIBUMI_HOST_CONTRACT_VERSION" \
+        '.hasBar == true and .hostCompatible == true
+          and .hostContractVersion >= $contract' \
+        <<<"$connector_service_state" >/dev/null 2>&1; then
         pass "Shibumi connector service is active"
       else
-        fail "Shibumi connector service is not active"
+        fail "Shibumi connector service is inactive or uses an incompatible host contract"
+      fi
+      if jq -e '.events.fallbackPollMs >= 15000' \
+        <<<"$connector_service_state" >/dev/null 2>&1; then
+        pass "Herdr status uses events with slow fallback polling"
+      else
+        fail "Herdr event diagnostics are missing or fallback polling is too frequent"
       fi
     fi
 
@@ -173,7 +242,8 @@ doctor() {
       && cmp -s -- "$SHIBUMI_PLUGIN/manifest.json" "$REPO_ROOT/integrations/shibumi/plugin/manifest.json" \
       && cmp -s -- "$SHIBUMI_PLUGIN/BarWidget.qml" "$REPO_ROOT/integrations/shibumi/plugin/BarWidget.qml" \
       && cmp -s -- "$SHIBUMI_PLUGIN/Service.qml" "$REPO_ROOT/integrations/shibumi/plugin/Service.qml" \
-      && cmp -s -- "$SHIBUMI_PLUGIN/Status.js" "$REPO_ROOT/integrations/shibumi/plugin/Status.js"; then
+      && cmp -s -- "$SHIBUMI_PLUGIN/Status.js" "$REPO_ROOT/integrations/shibumi/plugin/Status.js" \
+      && cmp -s -- "$SHIBUMI_PLUGIN/ThemedConnector.qml" "$REPO_ROOT/integrations/shibumi/plugin/ThemedConnector.qml"; then
       pass "Shibumi widget files match this checkout"
     else
       fail "Shibumi widget is missing or differs from this checkout: $SHIBUMI_PLUGIN"
@@ -206,6 +276,40 @@ doctor() {
       fi
     else
       fail "Omarchy shell configuration is missing: $SHELL_CONFIG"
+    fi
+
+    if [[ -f $PLUGIN_ROOT/$SHIBUMI_BAR_ID/Bar.qml ]]; then
+      host_version="$(sed -nE \
+        's/.*property[[:space:]]+int[[:space:]]+shibumiHostContractVersion[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+        "$PLUGIN_ROOT/$SHIBUMI_BAR_ID/Bar.qml" | head -n 1)"
+      if [[ $host_version =~ ^[0-9]+$ ]] \
+        && (( host_version >= SHIBUMI_HOST_CONTRACT_VERSION )); then
+        pass "Shibumi host contract v$host_version is compatible"
+      else
+        fail "Shibumi host contract is incompatible: need v$SHIBUMI_HOST_CONTRACT_VERSION or newer"
+      fi
+    fi
+
+    if [[ -r $THEME_DIR/shell.toml && -n $connector_service_state ]]; then
+      expected_surface="$(toml_value "$THEME_DIR/shell.toml" popups background)"
+      expected_stroke="$(toml_value "$THEME_DIR/shell.toml" popups border)"
+      if [[ $expected_stroke == *.* ]]; then
+        expected_stroke="$(toml_value "$THEME_DIR/shell.toml" \
+          "${expected_stroke%%.*}" "${expected_stroke#*.}")"
+      fi
+      runtime_surface="$(jq -r '.connector.surface // empty' \
+        <<<"$connector_service_state" | tr '[:upper:]' '[:lower:]')"
+      runtime_stroke="$(jq -r '.connector.stroke // empty' \
+        <<<"$connector_service_state" | tr '[:upper:]' '[:lower:]')"
+      if [[ -n $expected_surface && -n $expected_stroke \
+        && $runtime_surface == "$expected_surface" \
+        && $runtime_stroke == "$expected_stroke" ]]; then
+        pass "Runtime connector colors match the active popup theme"
+      else
+        fail "Runtime connector colors differ: expected $expected_surface/$expected_stroke, found ${runtime_surface:-missing}/${runtime_stroke:-missing}"
+      fi
+    else
+      fail "Could not compare runtime connector colors with the active theme"
     fi
 
     if special_visible && command -v omarchy-shell >/dev/null 2>&1; then

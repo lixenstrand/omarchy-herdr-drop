@@ -15,6 +15,10 @@ SHIBUMI_WIDGET_ID="io.github.lixenstrand.herdr-drop"
 SHIBUMI_PLUGIN="$SRC/integrations/shibumi/plugin"
 SHIBUMI_PLUGIN_TARGET="$PLUGIN_ROOT/$SHIBUMI_WIDGET_ID"
 SHIBUMI_PROFILE="$SRC/integrations/shibumi/herdr-drop-integration.lua"
+THEME_TEMPLATE="$SRC/integrations/omarchy/themed/herdr.toml.tpl"
+THEME_HOOK="$SRC/integrations/omarchy/hooks/herdr-theme"
+THEMED_ROOT="$CONFIG_ROOT/omarchy/themed"
+THEME_HOOK_ROOT="$CONFIG_ROOT/omarchy/hooks/theme-set.d"
 STAMP="$(date +%s)"
 PURGE=0
 RELOAD=1
@@ -62,6 +66,8 @@ remove_owned_link() {
 
 remove_owned_link "$BIN/herdr-drop" "$SRC/bin/herdr-drop"
 remove_owned_link "$HYPR/herdr-drop.lua" "$SRC/hypr/herdr-drop.lua"
+remove_owned_link "$THEMED_ROOT/herdr-drop.toml.tpl" "$THEME_TEMPLATE"
+remove_owned_link "$THEME_HOOK_ROOT/herdr-drop-theme" "$THEME_HOOK"
 
 shibumi_owned=0
 shibumi_is_directory=0
@@ -93,7 +99,11 @@ if (( shibumi_owned )); then
   else
     unlink -- "$SHIBUMI_PLUGIN_TARGET"
   fi
-  if command -v omarchy-shell >/dev/null 2>&1; then
+  # A rescan does not destroy an already-instantiated plugin service. Restart
+  # the shell after removal so no stale connector survives the uninstall.
+  if command -v omarchy >/dev/null 2>&1; then
+    omarchy restart shell >/dev/null 2>&1 || true
+  elif command -v omarchy-shell >/dev/null 2>&1; then
     omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
   fi
 elif [[ -e $SHIBUMI_PLUGIN_TARGET || -L $SHIBUMI_PLUGIN_TARGET ]]; then

@@ -32,6 +32,8 @@ if command -v qmllint >/dev/null 2>&1; then
     "$ROOT/integrations/shibumi/plugin/BarWidget.qml" >/dev/null 2>&1
   qmllint -I /usr/share/omarchy/shell \
     "$ROOT/integrations/shibumi/plugin/Service.qml" >/dev/null 2>&1
+  qmllint -I /usr/share/omarchy/shell \
+    "$ROOT/integrations/shibumi/plugin/ThemedConnector.qml" >/dev/null 2>&1
 fi
 QML_TEST_RUNNER="$(command -v qmltestrunner || true)"
 if [[ -z $QML_TEST_RUNNER && -x /usr/lib/qt6/bin/qmltestrunner ]]; then
@@ -47,18 +49,67 @@ HYPR="$CONFIG_ROOT/hypr"
 FAKE_BIN="$SANDBOX/bin"
 PLUGIN_ROOT="$CONFIG_ROOT/omarchy/plugins"
 SHIBUMI_HOST="$PLUGIN_ROOT/hancore.shibumi.bar"
+ACTIVE_THEME="$HOME_DIR/.local/state/omarchy/current/theme"
 TEST_LOG="$SANDBOX/commands.log"
-mkdir -p "$HYPR" "$FAKE_BIN" "$SHIBUMI_HOST"
+mkdir -p "$HYPR" "$FAKE_BIN" "$SHIBUMI_HOST" \
+  "$CONFIG_ROOT/herdr" "$ACTIVE_THEME"
 printf '%s\n' 'require("default.hypr.omarchy")' >"$HYPR/hyprland.lua"
 printf '%s\n' \
   'import QtQuick' \
-  'Item { function publishConnectedPanel() { return true } }' \
+  'Item {' \
+  '  readonly property int shibumiHostContractVersion: 1' \
+  '  function publishConnectedPanel() { return true }' \
+  '  function clearConnectedPanel() { return true }' \
+  '  function requestPopout() { return true }' \
+  '  function releasePopout() { return true }' \
+  '}' \
   >"$SHIBUMI_HOST/Bar.qml"
 printf '%s\n' \
   '{"bar":{"id":"hancore.shibumi.bar","layout":{"left":[],"center":["io.github.lixenstrand.herdr-drop"],"right":[]}}}' \
   >"$CONFIG_ROOT/omarchy/shell.json"
 
-for command_name in herdr omarchy-launch-tui; do
+printf '%s\n' \
+  '[theme]' \
+  'name = "custom"' \
+  '' \
+  '[theme.custom]' \
+  'panel_bg = "#000000"' \
+  'text = "#ffffff"' \
+  'accent = "#ffffff"' \
+  'selection_bg = "#222222"' \
+  'red = "#ff0000"' \
+  'green = "#00ff00"' \
+  'yellow = "#ffff00"' \
+  'blue = "#0000ff"' >"$CONFIG_ROOT/herdr/config.toml"
+printf '%s\n' \
+  'background = "#2d353b"' \
+  'foreground = "#d3c6aa"' \
+  'accent = "#7fbbb3"' \
+  'selection = "#3d484d"' \
+  'selection_background = "#3d484d"' \
+  'red = "#e67e80"' \
+  'green = "#a7c080"' \
+  'yellow = "#dbbc7f"' \
+  'blue = "#7fbbb3"' >"$ACTIVE_THEME/colors.toml"
+printf '%s\n' \
+  '[hyprland]' \
+  'active-border = "#7fbbb3"' \
+  '' \
+  '[popups]' \
+  'background = "#2d353b"' \
+  'border = "hyprland.active-border"' >"$ACTIVE_THEME/shell.toml"
+printf '%s\n' \
+  '[theme.custom]' \
+  'panel_bg = "#2d353b"' \
+  'text = "#d3c6aa"' \
+  'accent = "#7fbbb3"' \
+  'selection_bg = "#3d484d"' \
+  'red = "#e67e80"' \
+  'green = "#a7c080"' \
+  'yellow = "#dbbc7f"' \
+  'blue = "#7fbbb3"' >"$ACTIVE_THEME/herdr.toml"
+
+for command_name in herdr omarchy-launch-tui socat; do
   printf '%s\n' '#!/bin/sh' 'exit 0' >"$FAKE_BIN/$command_name"
   chmod 755 "$FAKE_BIN/$command_name"
 done
@@ -85,7 +136,7 @@ printf '%s\n' \
   'printf '\''omarchy-shell %s\n'\'' "$*" >>"${TEST_LOG:?}"' \
   'case "$*" in' \
   '  "shibumi-suite connectedPanelState") printf '\''%s\n'\'' '\''{"active":false,"screen":"","x":0,"reveal":0}'\'' ;;' \
-  '  "io.github.lixenstrand.herdr-drop state") printf '\''%s\n'\'' '\''{"visible":false,"hasBar":true}'\'' ;;' \
+  '  "io.github.lixenstrand.herdr-drop state") printf '\''%s\n'\'' '\''{"visible":false,"hasBar":true,"hostCompatible":true,"hostContractVersion":1,"connector":{"visible":false,"hasScreen":false,"surface":"#2d353b","stroke":"#7fbbb3"},"events":{"connected":true,"count":1,"fallbackPollMs":60000}}'\'' ;;' \
   '  *) printf '\''%s\n'\'' '\''ok'\'' ;;' \
   'esac' >"$FAKE_BIN/omarchy-shell"
 chmod 755 "$FAKE_BIN/omarchy-shell"
@@ -114,9 +165,27 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "focus title was not stored as plain text"
 [[ $(grep -cF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua") == 1 ]] \
   || fail "Hyprland require was not installed exactly once"
+assert_link_to "$CONFIG_ROOT/omarchy/themed/herdr-drop.toml.tpl" \
+  "$ROOT/integrations/omarchy/themed/herdr.toml.tpl"
+assert_link_to "$CONFIG_ROOT/omarchy/hooks/theme-set.d/herdr-drop-theme" \
+  "$ROOT/integrations/omarchy/hooks/herdr-theme"
+rg -Fq 'panel_bg = "#2d353b"' "$CONFIG_ROOT/herdr/config.toml" \
+  || fail "installer did not apply the current Omarchy palette to Herdr"
+valid_config="$(<"$CONFIG_ROOT/herdr/config.toml")"
+printf '%s\n' "$valid_config" '# >>> omarchy-theme' \
+  'panel_bg = "#000000"' >"$CONFIG_ROOT/herdr/config.toml"
+malformed_before="$(sha256sum "$CONFIG_ROOT/herdr/config.toml")"
+if HOME="$HOME_DIR" HERDR_CONFIG="$CONFIG_ROOT/herdr/config.toml" \
+  OMARCHY_THEME_DIR="$ACTIVE_THEME" \
+  "$ROOT/integrations/omarchy/hooks/herdr-theme" >/dev/null 2>&1; then
+  fail "theme hook accepted a malformed marker block"
+fi
+[[ $(sha256sum "$CONFIG_ROOT/herdr/config.toml") == "$malformed_before" ]] \
+  || fail "theme hook changed a config with malformed markers"
+printf '%s' "$valid_config" >"$CONFIG_ROOT/herdr/config.toml"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.4.0" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.5.0" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -131,6 +200,14 @@ printf '%s\n' 'return { key = "SUPER + H" }' >"$HYPR/herdr-drop-settings.lua"
 backup_count="$(find "$CONFIG_ROOT/herdr-drop" -maxdepth 1 -name 'config.bak.*' | wc -l)"
 [[ $backup_count == 0 ]] || fail "idempotent rerun created a redundant backup"
 
+cp "$SHIBUMI_HOST/Bar.qml" "$SHIBUMI_HOST/Bar.qml.compatible"
+sed 's/shibumiHostContractVersion: 1/shibumiHostContractVersion: 0/' \
+  "$SHIBUMI_HOST/Bar.qml.compatible" >"$SHIBUMI_HOST/Bar.qml"
+if "$ROOT/install.sh" --shibumi --no-reload >/dev/null 2>&1; then
+  fail "installer accepted an incompatible Shibumi host contract"
+fi
+mv "$SHIBUMI_HOST/Bar.qml.compatible" "$SHIBUMI_HOST/Bar.qml"
+
 "$ROOT/install.sh" --shibumi --no-reload >/dev/null
 assert_file "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/manifest.json"
 assert_file "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/.herdr-drop-owned"
@@ -143,9 +220,19 @@ cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Service.qml" \
 cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/Status.js" \
   "$ROOT/integrations/shibumi/plugin/Status.js" \
   || fail "installed Shibumi status logic differs from this checkout"
+cmp -s "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop/ThemedConnector.qml" \
+  "$ROOT/integrations/shibumi/plugin/ThemedConnector.qml" \
+  || fail "installed themed connector differs from this checkout"
 rg -Fq 'if (!panelVisible || connectionReveal <= 0.001)' \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "connector is not cleared when panel closing begins"
+rg -Fq 'hostCaret: false' \
+  "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  && rg -Fq 'Commons.Color.popups.background' \
+    "$ROOT/integrations/shibumi/plugin/ThemedConnector.qml" \
+  && rg -Fq 'Commons.Color.popups.border' \
+    "$ROOT/integrations/shibumi/plugin/ThemedConnector.qml" \
+  || fail "connector does not follow the active Omarchy popup theme"
 rg -Fq 'if (root.panelVisible) root.beginClosing()' \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "bar toggle does not hide its connector before closing"
@@ -171,6 +258,13 @@ rg -Fq 'command: ["herdr", "api", "snapshot"]' \
   && rg -Fq 'terminal_title_stripped' \
     "$ROOT/integrations/shibumi/plugin/Status.js" \
   || fail "hover status is not backed by concrete Herdr data"
+rg -Fq 'method: "events.subscribe"' \
+  "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  && rg -Fq 'interval: root.herdrEventsConnected ? 60000 : 15000' \
+    "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  && rg -Fq 'interval: 30000' \
+    "$ROOT/integrations/shibumi/plugin/Service.qml" \
+  || fail "Shibumi service still relies on frequent background polling"
 rg -Fq 'root.setting("privacyMode", false)' \
   "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
   || fail "Shibumi widget does not expose privacy mode"
@@ -192,21 +286,29 @@ rg -q 'leaf = "specialWorkspaceOut"' "$HYPR/herdr-drop.lua" \
   && rg -q 'style = "slidefadevert bottom"' "$HYPR/herdr-drop.lua" \
   || fail "Herdr Drop does not leave upward"
 rg -q '^omarchy-shell shell rescanPlugins$' "$TEST_LOG" \
-  || fail "Shibumi install did not rescan plugins"
+  || fail "idempotent Shibumi install did not rescan plugins"
+rg -q '^omarchy restart shell$' "$TEST_LOG" \
+  || fail "changed Shibumi service did not restart the shell"
 rg -q '^omarchy bar put io.github.lixenstrand.herdr-drop --section center$' \
   "$TEST_LOG" || fail "Shibumi install did not place the bar widget"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy Shibumi integration"
 
+restart_count_before_uninstall="$(grep -c '^omarchy restart shell$' "$TEST_LOG")"
 "$ROOT/uninstall.sh" --no-reload >/dev/null
 assert_absent "$HOME_DIR/.local/bin/herdr-drop"
 assert_absent "$HYPR/herdr-drop.lua"
 assert_absent "$PLUGIN_ROOT/io.github.lixenstrand.herdr-drop"
 assert_absent "$HYPR/herdr-drop-integration.lua"
+assert_absent "$CONFIG_ROOT/omarchy/themed/herdr-drop.toml.tpl"
+assert_absent "$CONFIG_ROOT/omarchy/hooks/theme-set.d/herdr-drop-theme"
 assert_file "$HYPR/herdr-drop-settings.lua"
 assert_file "$CONFIG_ROOT/herdr-drop/config"
 rg -q '^omarchy plugin disable io.github.lixenstrand.herdr-drop$' "$TEST_LOG" \
   || fail "uninstaller did not disable the Shibumi widget"
+restart_count_after_uninstall="$(grep -c '^omarchy restart shell$' "$TEST_LOG")"
+(( restart_count_after_uninstall > restart_count_before_uninstall )) \
+  || fail "uninstaller did not restart Omarchy Shell after plugin removal"
 ! grep -qF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua" \
   || fail "uninstaller left the Hyprland require behind"
 
@@ -219,4 +321,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.4.0 isolation, install, state scenarios, privacy, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.5.0 theme sync, events, contract checks, install, doctor, uninstall, and purge\n'

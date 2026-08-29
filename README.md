@@ -10,6 +10,9 @@ a sheep icon that reacts with the panel, uses live agent state for its accent
 and attention dot, and shows concrete Herdr workspace and agent details on
 hover. Version 1.4 distinguishes completed, blocked, and offline states, shows
 the two most important agents, and adds a privacy mode for screen sharing.
+Version 1.5 owns its Omarchy-to-Herdr theme hook, consumes Herdr events instead
+of polling every three seconds, validates the Shibumi host contract, and makes
+`doctor` verify the installed connector and its live colors.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
@@ -21,7 +24,7 @@ that `omarchy plugin add` intentionally does not manage.
 - [Herdr](https://herdr.dev/) available as `herdr`
 - `jq`, `hyprctl`, `omarchy`, and `omarchy-launch-tui`
 - Optional connector: the `hancore.shibumi.bar` plugin with its connected-panel
-  API
+  contract v1 or newer, plus `omarchy-shell` and `socat`
 
 ## Install
 
@@ -39,7 +42,9 @@ The installer:
 2. Backs up every existing file it replaces.
 3. Symlinks the versioned command and Hyprland module.
 4. Creates user-owned settings without overwriting them on later runs.
-5. Reloads Hyprland and fails if `hyprctl configerrors` reports a problem.
+5. Installs a theme template and hook, then applies the current Omarchy palette
+   to Herdr without replacing Herdr's other settings.
+6. Reloads Hyprland and fails if `hyprctl configerrors` reports a problem.
 
 To focus a specific pane when the drop-down client is first created:
 
@@ -59,8 +64,9 @@ profile too:
 ./install.sh --shibumi
 ```
 
-The button toggles Herdr Drop. While the panel is visible, Shibumi draws the
-caret and connector over the real panel border; hiding the panel removes both.
+The button toggles Herdr Drop. While the panel is visible, Herdr Drop draws the
+caret and connector over the real panel border using Omarchy's live popup
+background and border theme roles; hiding the panel removes both.
 The sheep briefly hops when the panel opens and leaves upward when it closes.
 Its accent means a detected Herdr agent is working. A dot means an agent is
 done, `!` means an agent is blocked, and a dimmed sheep means the Herdr server
@@ -68,7 +74,13 @@ is unavailable. Hovering reports the focused workspace, up to two agents in
 priority order with their real terminal tasks, and current totals.
 The QML plugin is installed as an owned directory because Qt rejects a whole
 plugin directory reached through a symlink. The base installation remains
-independent of Shibumi.
+independent of Shibumi. When that owned plugin changes, the installer restarts
+Omarchy Shell so its long-lived service and bar widget cannot run different
+versions; an unchanged reinstall only performs a lightweight plugin rescan.
+Herdr status updates arrive through one persistent socket subscription. A
+60-second health poll runs while connected; a 15-second fallback is used if
+the event stream is unavailable. Hyprland geometry follows compositor events
+with a 30-second repair poll.
 
 ## Configure
 
@@ -120,7 +132,7 @@ herdr-drop toggle  # show or hide
 herdr-drop open    # always show
 herdr-drop hide    # always hide
 herdr-drop kill    # close the client; Herdr sessions keep running
-herdr-drop doctor  # verify the installation and active Hyprland config
+herdr-drop doctor  # verify files, contracts, event mode, and live theme colors
 herdr-drop version # print the installed version
 ```
 
@@ -132,7 +144,8 @@ herdr-drop version # print the installed version
 
 This removes only symlinks owned by this checkout, the optional Shibumi widget,
 and the marked `require` block in `hyprland.lua`. User settings remain in
-place. The removed widget directory is kept under
+place. Omarchy Shell restarts after widget removal so no old service stays in
+memory. The removed widget directory is kept under
 `~/.config/herdr-drop/backups/`. To remove user settings too:
 
 ```bash

@@ -1,0 +1,92 @@
+#!/bin/bash
+# Keep Herdr's custom palette aligned with the active Omarchy theme.
+
+set -euo pipefail
+
+CONFIG="${HERDR_CONFIG:-$HOME/.config/herdr/config.toml}"
+THEME_DIR="${OMARCHY_THEME_DIR:-$HOME/.local/state/omarchy/current/theme}"
+RENDERED="$THEME_DIR/herdr-drop.toml"
+COLORS="$THEME_DIR/colors.toml"
+BEGIN="# >>> omarchy-theme"
+END="# <<< omarchy-theme"
+
+[[ -w $CONFIG ]] || exit 0
+
+toml_value() {
+  local key="$1"
+  awk -F= -v key="$key" '
+    $1 ~ "^[[:space:]]*" key "[[:space:]]*$" {
+      value = $2
+      sub(/^[[:space:]]*/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' "$COLORS"
+}
+
+generated=""
+if [[ -r $COLORS ]]; then
+  generated="$(printf '%s\n' \
+    '[theme.custom]' \
+    "panel_bg = \"$(toml_value background)\"" \
+    "text = \"$(toml_value foreground)\"" \
+    "accent = \"$(toml_value accent)\"" \
+    "selection_bg = \"$(toml_value selection)\"" \
+    "red = \"$(toml_value red)\"" \
+    "green = \"$(toml_value green)\"" \
+    "yellow = \"$(toml_value yellow)\"" \
+    "blue = \"$(toml_value blue)\"")"
+elif [[ -r $RENDERED ]]; then
+  generated="$(<"$RENDERED")"
+else
+  exit 0
+fi
+
+block="$(printf '%s\n%s\n%s\n' "$BEGIN" "$generated" "$END")"
+block="$block"$'\n'
+tmp="$(mktemp "$CONFIG.XXXXXX")"
+probe="$(mktemp -d)"
+trap 'rm -f "$tmp"; rm -rf -- "$probe"' EXIT
+
+marker_state="$(awk -v begin="$BEGIN" -v end="$END" '
+  $0 == begin { begin_count += 1; begin_line = NR }
+  $0 == end { end_count += 1; end_line = NR }
+  END {
+    if (begin_count == 0 && end_count == 0) print "absent"
+    else if (begin_count == 1 && end_count == 1 && begin_line < end_line) print "valid"
+    else print "malformed"
+  }
+' "$CONFIG")"
+
+if [[ $marker_state == malformed ]]; then
+  echo "herdr-theme: malformed or duplicate Omarchy theme markers; current config preserved" >&2
+  exit 1
+elif [[ $marker_state == valid ]]; then
+  awk -v begin="$BEGIN" -v end="$END" -v block="$block" '
+    index($0, begin) == 1 { print block; skip = 1; next }
+    index($0, end) == 1 { skip = 0; next }
+    !skip { print }
+  ' "$CONFIG" >"$tmp"
+else
+  awk -v block="$block" '
+    /^\[theme\.custom\]/ { print block; skip = 1; next }
+    /^\[/ && skip { skip = 0 }
+    !skip { print }
+  ' "$CONFIG" >"$tmp"
+fi
+
+mkdir -p "$probe/herdr"
+cp "$tmp" "$probe/herdr/config.toml"
+if ! XDG_CONFIG_HOME="$probe" herdr config check >/dev/null 2>&1; then
+  echo "herdr-theme: generated palette failed herdr config check; current config preserved" >&2
+  exit 1
+fi
+
+cp -f "$CONFIG" "$CONFIG.bak"
+mv -f "$tmp" "$CONFIG"
+rm -rf -- "$probe"
+trap - EXIT
+
+omarchy-restart-herdr >/dev/null 2>&1 || true
