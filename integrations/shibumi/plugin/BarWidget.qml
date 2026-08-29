@@ -64,7 +64,7 @@ Ui.BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰆍"
+    text: "󰳆"
     active: root.opened
     tooltipText: root.opened ? "Hide Herdr Drop" : "Open Herdr Drop"
     onPressed: root.togglePanel()

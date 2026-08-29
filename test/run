@@ -109,7 +109,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.4" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.5" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -139,6 +139,9 @@ rg -Fq 'if (!panelVisible || connectionReveal <= 0.001)' \
 rg -Fq 'if (root.panelVisible) root.beginClosing()' \
   "$ROOT/integrations/shibumi/plugin/Service.qml" \
   || fail "bar toggle does not hide its connector before closing"
+rg -Fq 'text: "󰳆"' \
+  "$ROOT/integrations/shibumi/plugin/BarWidget.qml" \
+  || fail "Shibumi widget does not use the Herdr sheep icon"
 rg -Fq 'omarchy-shell -q "$SHIBUMI_WIDGET_ID" beginClose' \
   "$ROOT/bin/herdr-drop" \
   || fail "keybinding does not hide its connector before closing"
@@ -184,4 +187,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.2.4 isolation, base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.2.5 isolation, base and Shibumi install, sheep icon, animation, doctor, rerun, uninstall, and purge\n'
