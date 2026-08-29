@@ -4,7 +4,7 @@ A persistent Herdr client in a drop-down Hyprland window. Press `SUPER + A`
 to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
-![Herdr Drop opens from the Omarchy bar and closes when another UI appears](assets/herdr-drop-demo.gif)
+![Herdr Drop on a full Omarchy desktop](assets/herdr-drop-demo-laptop.gif)
 
 Version 1.2 adds an optional Shibumi bar button and a live connector that makes
 the bar and panel read as one surface while the panel is open. Version 1.3 adds
