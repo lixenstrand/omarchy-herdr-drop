@@ -32,6 +32,28 @@ local special = "herdrdrop"
 local special_workspace = "special:" .. special
 local app_selector = "class:^(" .. app_id:gsub("%.", "\\.") .. ")$"
 local focused_drop_monitor = nil
+local transient_shell_layers = {
+  ["omarchy-menu"] = true,
+  ["omarchy-image-selector"] = true,
+  ["omarchy-emojis"] = true,
+  ["omarchy-clipboard"] = true,
+  ["omarchy-keyboard-panel"] = true,
+}
+
+local function hide_drop_on_monitor(monitor)
+  if not settings.close_on_focus_loss or monitor == nil then return end
+
+  local active_special = monitor.active_special_workspace
+  if active_special == nil or active_special.name ~= special_workspace then return end
+
+  hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide"))
+end
+
+local function hide_visible_drop()
+  local window = hl.get_window(app_selector)
+  if window == nil then return end
+  hide_drop_on_monitor(window.monitor)
+end
 
 -- A click outside the panel focuses either another window or no window. Hide
 -- the special workspace after that focus transition while leaving the Herdr
@@ -44,12 +66,7 @@ local function close_drop_on_focus_loss(window)
 
   local monitor = focused_drop_monitor
   focused_drop_monitor = nil
-  if not settings.close_on_focus_loss or monitor == nil then return end
-
-  local active_special = monitor.active_special_workspace
-  if active_special == nil or active_special.name ~= special_workspace then return end
-
-  hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide"))
+  hide_drop_on_monitor(monitor)
 end
 
 local function close_drop_on_outside_click()
@@ -69,6 +86,14 @@ local function close_drop_on_outside_click()
     and cursor.y >= window.at.y
     and cursor.y < window.at.y + window.size.y
   if not inside then hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide")) end
+end
+
+-- Launchers are layer surfaces, not windows. Hide the drop as soon as an
+-- interactive Omarchy panel opens; a subsequently launched application is
+-- covered separately by window.open.
+local function close_drop_on_layer_open(layer)
+  if layer == nil or not transient_shell_layers[layer.namespace] then return end
+  hide_visible_drop()
 end
 
 -- A visible special workspace becomes the launch target for unrelated apps.
@@ -91,9 +116,20 @@ local function isolate_window(window, workspace)
   }))
 end
 
-hl.on("window.open", isolate_window)
+local function handle_window_open(window)
+  isolate_window(window)
+  if window == nil or window.class == app_id then return end
+  if settings.close_on_focus_loss then
+    -- Let Hyprland finish placing the new window before hiding its launch
+    -- surface. The command checks compositor state itself and is idempotent.
+    hl.dispatch(hl.dsp.exec_cmd("sh -c 'sleep 0.1; herdr-drop hide'"))
+  end
+end
+
+hl.on("window.open", handle_window_open)
 hl.on("window.move_to_workspace", isolate_window)
 hl.on("window.active", close_drop_on_focus_loss)
+hl.on("layer.opened", close_drop_on_layer_open)
 hl.bind("mouse:272", close_drop_on_outside_click, {
   release = true,
   non_consuming = true,
@@ -144,11 +180,6 @@ if settings.animation_speed then
 
   hl.animation({
     leaf = "specialWorkspaceOut",
-    enabled = true,
-    speed = settings.animation_speed,
-    bezier = "easeOutQuint",
-    -- Hyprland reverses the forced direction for an outgoing workspace:
-    -- "bottom" targets negative Y here, so the panel actually leaves upward.
-    style = "slidefadevert bottom",
+    enabled = false,
   })
 end
