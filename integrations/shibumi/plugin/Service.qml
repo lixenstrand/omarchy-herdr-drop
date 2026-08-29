@@ -11,8 +11,31 @@ Item {
 
   property var shell: null
   readonly property var bar: shell && shell.bar ? shell.bar : null
+  readonly property int requiredHostContractVersion: 1
+  readonly property int hostContractVersion: bar
+    ? Number(bar.shibumiHostContractVersion || 0) : 0
+  readonly property bool hostCompatible:
+    hostContractVersion >= requiredHostContractVersion
   readonly property string appClass: "org.omarchy.herdrdrop"
   readonly property string specialName: "special:herdrdrop"
+  readonly property string herdrSocketPath:
+    Quickshell.env("HERDR_SOCKET_PATH")
+      || Quickshell.env("HOME") + "/.config/herdr/herdr.sock"
+  readonly property string herdrEventRequest: JSON.stringify({
+    id: "herdr-drop-events",
+    method: "events.subscribe",
+    params: { subscriptions: [
+      { type: "workspace.updated" },
+      { type: "workspace.focused" },
+      { type: "workspace.created" },
+      { type: "workspace.closed" },
+      { type: "tab.focused" },
+      { type: "pane.created" },
+      { type: "pane.updated" },
+      { type: "pane.closed" },
+      { type: "pane.focused" }
+    ] }
+  })
 
   property bool panelVisible: false
   property string activeScreenName: ""
@@ -24,7 +47,20 @@ Item {
   property bool clientQueryPending: false
   property real connectionReveal: panelVisible ? 1 : 0
   property bool herdrQueryPending: false
+  property bool herdrEventsConnected: false
+  property int herdrEventCount: 0
   property var herdrStatus: HerdrStatus.loading()
+
+  readonly property var activeScreen: {
+    const screens = Quickshell.screens || []
+    for (let index = 0; index < screens.length; index++) {
+      if (String(screens[index].name || "") === activeScreenName)
+        return screens[index]
+    }
+    return null
+  }
+  readonly property real connectorAnchorX:
+    anchorForScreen(activeScreenName, panelGeometry)
 
   readonly property bool hasWorkingAgents:
     HerdrStatus.isWorking(herdrStatus)
@@ -41,6 +77,17 @@ Item {
       duration: root.panelVisible ? 160 : 120
       easing.type: root.panelVisible ? Easing.OutCubic : Easing.InCubic
     }
+  }
+
+  ThemedConnector {
+    id: themedConnector
+    targetScreen: root.activeScreen
+    active: root.panelVisible
+    requestedCenterX: root.connectorAnchorX
+    reveal: root.connectionReveal
+    cardX: root.panelGeometry ? Number(root.panelGeometry.x) || 0 : 0
+    cardY: root.panelGeometry ? Number(root.panelGeometry.y) || 0 : 0
+    cardWidth: root.panelGeometry ? Number(root.panelGeometry.width) || 0 : 0
   }
 
   function monitorRecords() {
@@ -68,6 +115,22 @@ Item {
       return
     }
     herdrQuery.running = true
+  }
+
+  function handleHerdrEventLine(line) {
+    try {
+      const payload = JSON.parse(String(line || ""))
+      if (payload.id === "herdr-drop-events"
+          && payload.result && payload.result.type === "subscription_started") {
+        herdrEventsConnected = true
+        queryHerdrStatus()
+        return
+      }
+      if (String(payload.event || "") !== "") {
+        herdrEventCount += 1
+        herdrEventDebounce.restart()
+      }
+    } catch (_error) {}
   }
 
   function monitorName(record) {
@@ -157,7 +220,7 @@ Item {
   }
 
   function publishConnection() {
-    if (!root.bar
+    if (!root.bar || !root.hostCompatible
         || typeof root.bar.publishConnectedPanel !== "function") return
     if (!panelVisible || connectionReveal <= 0.001) {
       if (typeof root.bar.clearConnectedPanel === "function")
@@ -172,7 +235,9 @@ Item {
     if (!panelGeometry || activeScreenName === "" || anchorX <= 0) return
     root.bar.publishConnectedPanel(root, activeScreenName, anchorX,
       connectionReveal, {
-        hostCaret: true,
+        // Herdr Drop owns the caret so it can use Omarchy's live popup theme
+        // roles. Shibumi still owns the connection geometry and popout state.
+        hostCaret: false,
         cardX: panelGeometry.x,
         cardY: panelGeometry.y,
         cardWidth: panelGeometry.width,
@@ -273,7 +338,20 @@ Item {
       anchorX: anchorForScreen(activeScreenName, panelGeometry),
       anchors: anchorRecords.length,
       hasBar: root.bar !== null,
-      herdrStatus: herdrStatus
+      hostContractVersion: root.hostContractVersion,
+      hostCompatible: root.hostCompatible,
+      connector: {
+        visible: themedConnector.visible,
+        hasScreen: themedConnector.targetScreen !== null,
+        surface: String(themedConnector.surfaceColor),
+        stroke: String(themedConnector.strokeColor)
+      },
+      herdrStatus: herdrStatus,
+      events: {
+        connected: root.herdrEventsConnected,
+        count: root.herdrEventCount,
+        fallbackPollMs: herdrStatusTimer.interval
+      }
     })
   }
 
@@ -281,9 +359,11 @@ Item {
   onBarChanged: {
     syncTimer.restart()
     herdrStatusTimer.restart()
+    if (!herdrEvents.running) herdrEvents.running = true
   }
 
   Component.onDestruction: {
+    herdrEvents.running = false
     if (root.bar && typeof root.bar.clearConnectedPanel === "function")
       root.bar.clearConnectedPanel(root, activeScreenName)
     if (root.bar && typeof root.bar.releasePopout === "function")
@@ -305,7 +385,8 @@ Item {
 
   Timer {
     id: syncTimer
-    interval: 5000
+    // Hyprland raw events handle normal changes; this only repairs missed IPC.
+    interval: 30000
     running: true
     repeat: true
     triggeredOnStart: true
@@ -320,11 +401,44 @@ Item {
 
   Timer {
     id: herdrStatusTimer
-    interval: 3000
+    // Event-driven while connected, with a slow health-check fallback.
+    interval: root.herdrEventsConnected ? 60000 : 15000
     running: true
     repeat: true
     triggeredOnStart: true
     onTriggered: root.queryHerdrStatus()
+  }
+
+  Timer {
+    id: herdrEventDebounce
+    // Coalesce bursts of pane lifecycle updates into one aggregate snapshot.
+    interval: 1000
+    onTriggered: root.queryHerdrStatus()
+  }
+
+  Timer {
+    id: herdrEventReconnect
+    interval: 5000
+    onTriggered: {
+      if (!herdrEvents.running) herdrEvents.running = true
+    }
+  }
+
+  Process {
+    id: herdrEvents
+    command: [
+      "bash", "-c",
+      "printf '%s\\n' \"$2\" | socat 'STDIO,ignoreeof' \"UNIX-CONNECT:$1\" & "
+        + "child=$!; trap 'kill \"$child\" 2>/dev/null; wait \"$child\" 2>/dev/null' TERM INT EXIT; wait \"$child\"",
+      "herdr-drop-events", root.herdrSocketPath, root.herdrEventRequest
+    ]
+    stdout: SplitParser {
+      onRead: line => root.handleHerdrEventLine(line)
+    }
+    onExited: function(_exitCode, _exitStatus) {
+      root.herdrEventsConnected = false
+      herdrEventReconnect.restart()
+    }
   }
 
   Process {
@@ -381,4 +495,6 @@ Item {
     interval: 50
     onTriggered: root.queryHerdrStatus()
   }
+
+  Component.onCompleted: herdrEvents.running = true
 }

@@ -1,0 +1,9 @@
+# Never publish local credentials or editor/runtime debris.
+.env
+.env.*
+!.env.example
+*.bak
+*.bak.*
+*.log
+*~
+.DS_Store
