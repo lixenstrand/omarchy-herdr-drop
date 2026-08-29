@@ -3,11 +3,14 @@
 
 local settings = {
   key = "SUPER + A",
-  width = 0.78,
-  height = 0.60,
-  left = 0.11,
-  top = 36,
-  animation_speed = 4,
+  width = 0.82,
+  height = 0.68,
+  left = 0.09,
+  top = 24,
+  rounding = 12,
+  border_size = false,
+  opacity = false,
+  animation_speed = false,
 }
 
 local user_settings = require("hypr.herdr-drop-settings")
@@ -23,7 +26,7 @@ local special = "herdrdrop"
 hl.unbind(settings.key)
 o.bind(settings.key, "Herdr drop-down", "herdr-drop")
 
-o.window("^(" .. app_id:gsub("%.", "\\.") .. ")$", {
+local window_rules = {
   float = true,
   size = {
     "(monitor_w*" .. tostring(settings.width) .. ")",
@@ -33,11 +36,18 @@ o.window("^(" .. app_id:gsub("%.", "\\.") .. ")$", {
     "(monitor_w*" .. tostring(settings.left) .. ")",
     tostring(settings.top),
   },
+  rounding = settings.rounding,
   workspace = "special:" .. special .. " silent",
-})
+}
 
--- These leaves are global to special workspaces. Set animation_speed = false
--- in the settings file to preserve Omarchy's active special-workspace style.
+-- Keep Omarchy's theme-owned border and opacity unless explicitly overridden.
+if settings.border_size ~= false then window_rules.border_size = settings.border_size end
+if settings.opacity ~= false then window_rules.opacity = settings.opacity end
+
+o.window("^(" .. app_id:gsub("%.", "\\.") .. ")$", window_rules)
+
+-- These leaves are global to every special workspace, so custom animation is
+-- opt-in. The default preserves the user's active Omarchy animation.
 if settings.animation_speed then
   hl.animation({
     leaf = "specialWorkspaceIn",

@@ -30,10 +30,19 @@ FAKE_BIN="$SANDBOX/bin"
 mkdir -p "$HYPR" "$FAKE_BIN"
 printf '%s\n' 'require("default.hypr.omarchy")' >"$HYPR/hyprland.lua"
 
-for command_name in herdr hyprctl omarchy-launch-tui; do
+for command_name in herdr omarchy-launch-tui; do
   printf '%s\n' '#!/bin/sh' 'exit 0' >"$FAKE_BIN/$command_name"
   chmod 755 "$FAKE_BIN/$command_name"
 done
+printf '%s\n' \
+  '#!/bin/sh' \
+  'case "$*" in' \
+  '  "configerrors") exit 0 ;;' \
+  '  "-j binds") printf '\''%s\n'\'' '\''[{"description":"Herdr drop-down"}]'\'' ;;' \
+  '  "-j clients") printf '\''%s\n'\'' '\''[]'\'' ;;' \
+  '  *) printf '\''%s\n'\'' '\''ok'\'' ;;' \
+  'esac' >"$FAKE_BIN/hyprctl"
+chmod 755 "$FAKE_BIN/hyprctl"
 printf '%s\n' '#!/bin/sh' "printf '%s\\n' 'SUPER + A → Existing action'" \
   >"$FAKE_BIN/omarchy"
 chmod 755 "$FAKE_BIN/omarchy"
@@ -49,10 +58,27 @@ assert_link_to "$HOME_DIR/.local/bin/herdr-drop" "$ROOT/bin/herdr-drop"
 assert_link_to "$HYPR/herdr-drop.lua" "$ROOT/hypr/herdr-drop.lua"
 assert_file "$HYPR/herdr-drop-settings.lua"
 assert_file "$CONFIG_ROOT/herdr-drop/config"
+rg -q 'width = 0.82' "$HYPR/herdr-drop-settings.lua" \
+  || fail "v1.1 width default was not installed"
+rg -q 'height = 0.68' "$HYPR/herdr-drop-settings.lua" \
+  || fail "v1.1 height default was not installed"
+rg -q 'rounding = 12' "$HYPR/herdr-drop-settings.lua" \
+  || fail "v1.1 rounding default was not installed"
+rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
+  || fail "v1.1 changed special-workspace animation globally"
 [[ $(<"$CONFIG_ROOT/herdr-drop/config") == "Mission Control" ]] \
   || fail "focus title was not stored as plain text"
 [[ $(grep -cF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua") == 1 ]] \
   || fail "Hyprland require was not installed exactly once"
+"$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
+  || fail "doctor rejected a healthy installation"
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.1.0" ]] \
+  || fail "version command returned the wrong version"
+mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
+if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
+  fail "doctor accepted an installation with missing settings"
+fi
+mv "$HYPR/herdr-drop-settings.lua.missing" "$HYPR/herdr-drop-settings.lua"
 
 printf '%s\n' 'return { key = "SUPER + H" }' >"$HYPR/herdr-drop-settings.lua"
 "$ROOT/install.sh" --focus-title "Mission Control" --no-reload >/dev/null
@@ -78,4 +104,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop install, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.1 install, doctor, rerun, uninstall, and purge\n'

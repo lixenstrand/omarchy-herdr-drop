@@ -4,6 +4,9 @@ A persistent Herdr client in a drop-down Hyprland window. Press `SUPER + A`
 to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
+Version 1.1 adds a roomier theme-aware panel, rounded corners, opt-in visual
+overrides, and a built-in installation doctor.
+
 Herdr Drop is an Omarchy integration, not a Quickshell plugin. It installs the
 Hyprland window rule and keybinding that `omarchy plugin add` intentionally
 does not manage.
@@ -49,9 +52,15 @@ Edit the key, geometry, or animation speed here:
 ~/.config/hypr/herdr-drop-settings.lua
 ```
 
-Set `animation_speed = false` to preserve Omarchy's current animation for all
-special workspaces. Hyprland applies special-workspace animation leaves
-globally, not to one named special workspace.
+The defaults use 82% of the monitor width, 68% of its height, a 24 px top
+margin, and 12 px rounded corners. Border color, border width, opacity, and
+special-workspace animation inherit Omarchy unless explicitly overridden.
+
+Set `opacity` to a Hyprland opacity rule such as
+`"0.98 override 0.94 override"`, or `border_size` to an integer. Set
+`animation_speed` to a number such as `4` to opt into the slide animation.
+Hyprland applies special-workspace animation leaves globally, not to one named
+special workspace.
 
 The optional first-launch pane title lives here as one plain-text line:
 
@@ -66,6 +75,8 @@ herdr-drop toggle  # show or hide
 herdr-drop open    # always show
 herdr-drop hide    # always hide
 herdr-drop kill    # close the client; Herdr sessions keep running
+herdr-drop doctor  # verify the installation and active Hyprland config
+herdr-drop version # print the installed version
 ```
 
 ## Uninstall

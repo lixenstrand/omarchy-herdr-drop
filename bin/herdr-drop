@@ -3,9 +3,16 @@
 
 set -uo pipefail
 
+VERSION="1.1.0"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
-CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/herdr-drop/config"
+USER_HOME="${HERDR_DROP_HOME:-$HOME}"
+CONFIG_ROOT="${XDG_CONFIG_HOME:-$USER_HOME/.config}"
+CONFIG="$CONFIG_ROOT/herdr-drop/config"
+HYPR="$CONFIG_ROOT/hypr"
+HYPRLAND="$HYPR/hyprland.lua"
+SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
 # The config is user-owned plain text. Keeping a machine-specific title
 # outside this script makes the drop-down reusable without executing config.
@@ -79,6 +86,90 @@ launch_window() {
   return 1
 }
 
+doctor() {
+  local failures=0 missing=() errors bind_count clients
+
+  pass() { printf 'PASS  %s\n' "$*"; }
+  info() { printf 'INFO  %s\n' "$*"; }
+  fail() { printf 'FAIL  %s\n' "$*"; failures=$((failures + 1)); }
+
+  printf 'Herdr Drop doctor %s\n' "$VERSION"
+
+  local command_name
+  for command_name in herdr jq hyprctl omarchy omarchy-launch-tui; do
+    command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
+  done
+  if (( ${#missing[@]} == 0 )); then
+    pass "Required commands are available"
+  else
+    fail "Missing commands: ${missing[*]}"
+  fi
+
+  if [[ -L $USER_HOME/.local/bin/herdr-drop ]] \
+    && [[ $(readlink -f -- "$USER_HOME/.local/bin/herdr-drop") == "$SCRIPT_PATH" ]]; then
+    pass "Command link belongs to this checkout"
+  else
+    fail "Command link is missing or points elsewhere: $USER_HOME/.local/bin/herdr-drop"
+  fi
+
+  if [[ -L $HYPR/herdr-drop.lua ]] \
+    && [[ $(readlink -f -- "$HYPR/herdr-drop.lua") == "$REPO_ROOT/hypr/herdr-drop.lua" ]]; then
+    pass "Hyprland module belongs to this checkout"
+  else
+    fail "Hyprland module is missing or points elsewhere: $HYPR/herdr-drop.lua"
+  fi
+
+  if [[ -f $HYPRLAND ]] && grep -qF 'require("hypr.herdr-drop")' "$HYPRLAND"; then
+    pass "Hyprland loads Herdr Drop"
+  else
+    fail "Hyprland does not load Herdr Drop"
+  fi
+
+  if [[ -f $HYPR/herdr-drop-settings.lua ]]; then
+    pass "User settings exist"
+  else
+    fail "User settings are missing: $HYPR/herdr-drop-settings.lua"
+  fi
+
+  if command -v hyprctl >/dev/null 2>&1; then
+    if errors="$(hyprctl configerrors 2>&1)"; then
+      if [[ -z $errors ]]; then
+        pass "Hyprland reports no configuration errors"
+      else
+        fail "Hyprland configuration errors: $errors"
+      fi
+    else
+      fail "Could not query Hyprland configuration errors: $errors"
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+      bind_count="$(hyprctl -j binds 2>/dev/null \
+        | jq '[.[] | select(.description == "Herdr drop-down")] | length' 2>/dev/null)"
+      if [[ ${bind_count:-0} -gt 0 ]]; then
+        pass "Herdr Drop keybinding is active"
+      else
+        fail "Herdr Drop keybinding is not active"
+      fi
+
+      clients="$(hyprctl -j clients 2>/dev/null)"
+      if jq -e --arg class "$APP_ID" 'any(.[]; .class == $class)' \
+        <<<"$clients" >/dev/null 2>&1; then
+        info "Panel client is running"
+      else
+        info "Panel client is not running; it will start on first open"
+      fi
+    fi
+  fi
+
+  if (( failures == 0 )); then
+    printf 'OK    Herdr Drop is healthy\n'
+    return 0
+  fi
+
+  printf 'ERROR %d check(s) failed\n' "$failures" >&2
+  return 1
+}
+
 case "${1:-toggle}" in
 toggle)
   if special_visible; then
@@ -96,6 +187,8 @@ open)
   show_window
   ;;
 hide) hide_window ;;
+doctor) doctor ;;
+version | -V | --version) printf 'herdr-drop %s\n' "$VERSION" ;;
 kill)
   # Close only the client. Herdr's server and agent sessions keep running.
   hyprctl -j clients 2>/dev/null \
@@ -115,6 +208,8 @@ herdr-drop — persistent Herdr client in a drop-down panel
   open     Always show the panel
   hide     Hide the panel
   kill     Close the panel client; Herdr sessions keep running
+  doctor   Check dependencies, installation, keybinding, and Hyprland
+  version  Print the installed Herdr Drop version
 
 Put a pane-title fragment in ~/.config/herdr-drop/config to focus that pane
 when the panel client is first created.
