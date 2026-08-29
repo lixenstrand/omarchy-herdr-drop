@@ -185,7 +185,7 @@ fi
 printf '%s' "$valid_config" >"$CONFIG_ROOT/herdr/config.toml"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.0" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.1" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -326,4 +326,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.6.0 focus dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.6.1 outside-click dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'

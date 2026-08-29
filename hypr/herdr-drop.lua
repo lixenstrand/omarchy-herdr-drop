@@ -30,6 +30,7 @@ end
 local app_id = "org.omarchy.herdrdrop"
 local special = "herdrdrop"
 local special_workspace = "special:" .. special
+local app_selector = "class:^(" .. app_id:gsub("%.", "\\.") .. ")$"
 local focused_drop_monitor = nil
 
 -- A click outside the panel focuses either another window or no window. Hide
@@ -49,6 +50,25 @@ local function close_drop_on_focus_loss(window)
   if active_special == nil or active_special.name ~= special_workspace then return end
 
   hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide"))
+end
+
+local function close_drop_on_outside_click()
+  if not settings.close_on_focus_loss then return end
+
+  local window = hl.get_window(app_selector)
+  if window == nil or window.monitor == nil then return end
+
+  local active_special = window.monitor.active_special_workspace
+  if active_special == nil or active_special.name ~= special_workspace then return end
+
+  local cursor = hl.get_cursor_pos()
+  if cursor == nil or window.at == nil or window.size == nil then return end
+
+  local inside = cursor.x >= window.at.x
+    and cursor.x < window.at.x + window.size.x
+    and cursor.y >= window.at.y
+    and cursor.y < window.at.y + window.size.y
+  if not inside then hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide")) end
 end
 
 -- A visible special workspace becomes the launch target for unrelated apps.
@@ -74,6 +94,11 @@ end
 hl.on("window.open", isolate_window)
 hl.on("window.move_to_workspace", isolate_window)
 hl.on("window.active", close_drop_on_focus_loss)
+hl.bind("mouse:272", close_drop_on_outside_click, {
+  release = true,
+  non_consuming = true,
+  transparent = true,
+})
 hl.on("config.reloaded", function()
   for _, window in ipairs(hl.get_workspace_windows(special_workspace) or {}) do
     isolate_window(window)
