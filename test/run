@@ -108,7 +108,7 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "Hyprland require was not installed exactly once"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.1" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.2.2" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -140,8 +140,12 @@ assert_link_to "$HYPR/herdr-drop-integration.lua" \
   "$ROOT/integrations/shibumi/herdr-drop-integration.lua"
 rg -q 'animation_speed = 4' "$HYPR/herdr-drop-integration.lua" \
   || fail "Shibumi profile did not enable the connected-panel animation"
-[[ $(rg -c 'style = "slidefadevert top"' "$HYPR/herdr-drop.lua") == 2 ]] \
-  || fail "Herdr Drop does not enter and leave through the top edge"
+rg -q 'leaf = "specialWorkspaceIn"' "$HYPR/herdr-drop.lua" \
+  && rg -q 'style = "slidefadevert top"' "$HYPR/herdr-drop.lua" \
+  || fail "Herdr Drop does not enter from the top edge"
+rg -q 'leaf = "specialWorkspaceOut"' "$HYPR/herdr-drop.lua" \
+  && rg -q 'style = "slidefadevert bottom"' "$HYPR/herdr-drop.lua" \
+  || fail "Herdr Drop does not leave upward"
 rg -q '^omarchy-shell shell rescanPlugins$' "$TEST_LOG" \
   || fail "Shibumi install did not rescan plugins"
 rg -q '^omarchy bar put io.github.lixenstrand.herdr-drop --section center$' \
@@ -170,4 +174,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.2.1 base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.2.2 base and Shibumi install, animation, doctor, rerun, uninstall, and purge\n'

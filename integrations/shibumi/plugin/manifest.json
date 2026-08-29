@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.lixenstrand.herdr-drop",
   "name": "Herdr Drop",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": "lixenstrand",
   "license": "MIT",
   "description": "Bar button and connected-panel bridge for Herdr Drop.",

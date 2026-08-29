@@ -70,6 +70,8 @@ if settings.animation_speed then
     enabled = true,
     speed = settings.animation_speed,
     bezier = "easeOutQuint",
-    style = "slidefadevert top",
+    -- Hyprland reverses the forced direction for an outgoing workspace:
+    -- "bottom" targets negative Y here, so the panel actually leaves upward.
+    style = "slidefadevert bottom",
   })
 end

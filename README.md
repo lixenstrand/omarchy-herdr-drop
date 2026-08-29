@@ -5,7 +5,7 @@ to show or hide the same client without starting a new agent. The selected
 Herdr view and scrollback stay where you left them.
 
 Version 1.2 adds an optional Shibumi bar button and a live connector that makes
-the bar and panel read as one surface while the panel is open. Version 1.2.1
+the bar and panel read as one surface while the panel is open. Version 1.2.2
 makes the connected panel enter from the bar and leave upward to it.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
