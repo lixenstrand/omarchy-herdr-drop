@@ -213,3 +213,9 @@ callbacks["window.active"]({
 })
 assert(monitor.close_count == 5,
   "focusing another monitor hid Herdr Drop on its original monitor")
+
+cursor_monitor = other_monitor
+callbacks["window.active"](drop)
+callbacks["window.active"](nil)
+assert(monitor.close_count == 5,
+  "clicking an empty area on another monitor hid Herdr Drop")
