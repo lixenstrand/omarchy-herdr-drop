@@ -57,9 +57,10 @@ local function hide_drop_on_monitor(monitor)
   monitor:set_special_workspace({})
 end
 
-local function hide_visible_drop()
+local function hide_visible_drop_on_monitor(trigger_monitor)
+  if trigger_monitor == nil then return end
   local window = hl.get_window(app_selector)
-  if window == nil then return end
+  if window == nil or not same_monitor(window.monitor, trigger_monitor) then return end
   hide_drop_on_monitor(window.monitor)
 end
 
@@ -111,7 +112,7 @@ end
 -- covered separately by window.open.
 local function close_drop_on_layer_open(layer)
   if layer == nil or not transient_shell_layers[layer.namespace] then return end
-  hide_visible_drop()
+  hide_visible_drop_on_monitor(layer.monitor)
 end
 
 -- A visible special workspace becomes the launch target for unrelated apps.
@@ -140,7 +141,9 @@ local function handle_window_open(window)
   if settings.close_on_focus_loss then
     -- Let Hyprland finish placing the new window before hiding its launch
     -- surface, then close it through its owning monitor.
-    hl.timer(hide_visible_drop, { timeout = 100, type = "oneshot" })
+    hl.timer(function()
+      hide_visible_drop_on_monitor(window.monitor)
+    end, { timeout = 100, type = "oneshot" })
   end
 end
 

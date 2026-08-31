@@ -183,13 +183,27 @@ binds["mouse:272"].callback()
 assert(monitor.close_count == 4,
   "clicking another monitor hid Herdr Drop on its original monitor")
 
-callbacks["layer.opened"]({ namespace = "omarchy-background" })
+callbacks["window.open"]({
+  class = "foot",
+  workspace = other_monitor.active_workspace,
+  monitor = other_monitor,
+})
+assert(#timers == 3, "opening a window on another monitor did not schedule cleanup")
+timers[3].callback()
+assert(monitor.close_count == 4,
+  "opening a window on another monitor hid Herdr Drop")
+
+callbacks["layer.opened"]({ namespace = "omarchy-background", monitor = monitor })
 assert(monitor.close_count == 4,
   "a persistent shell layer hid Herdr Drop")
 
-callbacks["layer.opened"]({ namespace = "omarchy-menu" })
+callbacks["layer.opened"]({ namespace = "omarchy-menu", monitor = monitor })
 assert(monitor.close_count == 5,
   "opening the Omarchy menu did not hide Herdr Drop")
+
+callbacks["layer.opened"]({ namespace = "omarchy-menu", monitor = other_monitor })
+assert(monitor.close_count == 5,
+  "opening an Omarchy menu on another monitor hid Herdr Drop")
 
 callbacks["window.active"](drop)
 callbacks["window.active"]({
