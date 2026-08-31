@@ -40,13 +40,21 @@ local transient_shell_layers = {
   ["omarchy-keyboard-panel"] = true,
 }
 
+local function same_monitor(left, right)
+  return left ~= nil and right ~= nil and left.id == right.id
+end
+
 local function hide_drop_on_monitor(monitor)
   if not settings.close_on_focus_loss or monitor == nil then return end
 
   local active_special = monitor.active_special_workspace
   if active_special == nil or active_special.name ~= special_workspace then return end
 
-  hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide"))
+  -- Toggle dispatchers act on the currently focused monitor. Calling one
+  -- after pointer focus crosses to another monitor moves the special
+  -- workspace there instead of hiding it. Close through the monitor that
+  -- actually owns the panel.
+  monitor:set_special_workspace({})
 end
 
 local function hide_visible_drop()
@@ -60,6 +68,12 @@ end
 -- client and all of its sessions alive.
 local function close_drop_on_focus_loss(window)
   if window ~= nil and window.class == app_id then
+    if focused_drop_monitor ~= nil
+        and not same_monitor(focused_drop_monitor, window.monitor) then
+      focused_drop_monitor = nil
+      hide_visible_drop()
+      return
+    end
     focused_drop_monitor = window.monitor
     return
   end
@@ -67,6 +81,14 @@ local function close_drop_on_focus_loss(window)
   local monitor = focused_drop_monitor
   focused_drop_monitor = nil
   hide_drop_on_monitor(monitor)
+end
+
+local function close_drop_on_monitor_focus(monitor)
+  if focused_drop_monitor == nil or monitor == nil
+      or same_monitor(focused_drop_monitor, monitor) then return end
+
+  focused_drop_monitor = nil
+  hide_visible_drop()
 end
 
 local function close_drop_on_outside_click()
@@ -85,7 +107,7 @@ local function close_drop_on_outside_click()
     and cursor.x < window.at.x + window.size.x
     and cursor.y >= window.at.y
     and cursor.y < window.at.y + window.size.y
-  if not inside then hl.dispatch(hl.dsp.exec_cmd("herdr-drop hide")) end
+  if not inside then hide_drop_on_monitor(window.monitor) end
 end
 
 -- Launchers are layer surfaces, not windows. Hide the drop as soon as an
@@ -121,14 +143,15 @@ local function handle_window_open(window)
   if window == nil or window.class == app_id then return end
   if settings.close_on_focus_loss then
     -- Let Hyprland finish placing the new window before hiding its launch
-    -- surface. The command checks compositor state itself and is idempotent.
-    hl.dispatch(hl.dsp.exec_cmd("sh -c 'sleep 0.1; herdr-drop hide'"))
+    -- surface, then close it through its owning monitor.
+    hl.timer(hide_visible_drop, { timeout = 100, type = "oneshot" })
   end
 end
 
 hl.on("window.open", handle_window_open)
 hl.on("window.move_to_workspace", isolate_window)
 hl.on("window.active", close_drop_on_focus_loss)
+hl.on("monitor.focused", close_drop_on_monitor_focus)
 hl.on("layer.opened", close_drop_on_layer_open)
 hl.bind("mouse:272", close_drop_on_outside_click, {
   release = true,
