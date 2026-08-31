@@ -32,6 +32,9 @@ _G.hl = {
     return windows_on_special
   end,
   get_active_window = function() return active_window end,
+  get_active_monitor = function()
+    return active_window and active_window.monitor or nil
+  end,
   timer = function(callback, options)
     table.insert(timers, { callback = callback, options = options })
   end,
@@ -50,7 +53,6 @@ assert(callbacks["window.open"], "window.open isolation hook is missing")
 assert(callbacks["window.move_to_workspace"],
   "window.move_to_workspace isolation hook is missing")
 assert(callbacks["window.active"], "window.active dismissal hook is missing")
-assert(callbacks["monitor.focused"], "monitor.focused dismissal hook is missing")
 assert(callbacks["layer.opened"], "layer.opened dismissal hook is missing")
 assert(callbacks["config.reloaded"], "reload cleanup hook is missing")
 assert(binds["mouse:272"], "outside-click binding is missing")
@@ -181,6 +183,10 @@ local other_monitor = {
   active_special_workspace = nil,
 }
 callbacks["window.active"](drop)
-callbacks["monitor.focused"](other_monitor)
-assert(monitor.close_count == 6,
-  "pointer focus crossing monitors did not hide Herdr Drop on its owner")
+callbacks["window.active"]({
+  class = "foot",
+  workspace = other_monitor.active_workspace,
+  monitor = other_monitor,
+})
+assert(monitor.close_count == 5,
+  "focusing another monitor hid Herdr Drop on its original monitor")

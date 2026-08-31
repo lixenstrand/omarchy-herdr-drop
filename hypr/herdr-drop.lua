@@ -68,27 +68,20 @@ end
 -- client and all of its sessions alive.
 local function close_drop_on_focus_loss(window)
   if window ~= nil and window.class == app_id then
-    if focused_drop_monitor ~= nil
-        and not same_monitor(focused_drop_monitor, window.monitor) then
-      focused_drop_monitor = nil
-      hide_visible_drop()
-      return
-    end
     focused_drop_monitor = window.monitor
     return
   end
 
   local monitor = focused_drop_monitor
+  local next_monitor = window and window.monitor or hl.get_active_monitor()
+  -- Another monitor remains usable while the drop stays visible on the
+  -- monitor where it opened. Only focus loss on that same monitor dismisses
+  -- the panel.
+  if monitor ~= nil and next_monitor ~= nil
+      and not same_monitor(monitor, next_monitor) then return end
+
   focused_drop_monitor = nil
   hide_drop_on_monitor(monitor)
-end
-
-local function close_drop_on_monitor_focus(monitor)
-  if focused_drop_monitor == nil or monitor == nil
-      or same_monitor(focused_drop_monitor, monitor) then return end
-
-  focused_drop_monitor = nil
-  hide_visible_drop()
 end
 
 local function close_drop_on_outside_click()
@@ -151,7 +144,6 @@ end
 hl.on("window.open", handle_window_open)
 hl.on("window.move_to_workspace", isolate_window)
 hl.on("window.active", close_drop_on_focus_loss)
-hl.on("monitor.focused", close_drop_on_monitor_focus)
 hl.on("layer.opened", close_drop_on_layer_open)
 hl.bind("mouse:272", close_drop_on_outside_click, {
   release = true,
