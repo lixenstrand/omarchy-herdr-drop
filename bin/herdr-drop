@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.6.2"
+VERSION="1.6.3"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
