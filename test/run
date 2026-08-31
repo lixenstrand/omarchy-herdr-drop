@@ -115,11 +115,13 @@ for command_name in herdr omarchy-launch-tui socat; do
 done
 printf '%s\n' \
   '#!/bin/sh' \
+  'printf '\''hyprctl %s\n'\'' "$*" >>"${TEST_LOG:?}"' \
   'case "$*" in' \
   '  "configerrors") exit 0 ;;' \
   '  "-j binds") printf '\''%s\n'\'' '\''[{"description":"Herdr drop-down"}]'\'' ;;' \
   '  "-j clients") printf '\''%s\n'\'' '\''[]'\'' ;;' \
-  '  "-j monitors") printf '\''%s\n'\'' '\''[]'\'' ;;' \
+  '  "-j monitors") printf '\''%s\n'\'' "${HYPR_MONITORS_JSON:-[]}" ;;' \
+  '  eval*) printf '\''%s\n'\'' '\''ok'\'' ;;' \
   '  *) printf '\''%s\n'\'' '\''ok'\'' ;;' \
   'esac' >"$FAKE_BIN/hyprctl"
 chmod 755 "$FAKE_BIN/hyprctl"
@@ -163,6 +165,16 @@ rg -q 'animation_speed = false' "$HYPR/herdr-drop-settings.lua" \
   || fail "v1.1 changed special-workspace animation globally"
 [[ $(<"$CONFIG_ROOT/herdr-drop/config") == "Mission Control" ]] \
   || fail "focus title was not stored as plain text"
+HYPR_MONITORS_JSON='[{"id":1,"name":"DP-1","focused":false,"specialWorkspace":{"name":"special:herdrdrop"}},{"id":2,"name":"DP-2","focused":true,"specialWorkspace":{"name":""}}]'
+export HYPR_MONITORS_JSON
+: >"$TEST_LOG"
+"$HOME_DIR/.local/bin/herdr-drop" hide
+rg -Fq 'hyprctl eval local monitor = hl.get_monitor("DP-1"); if monitor then monitor:set_special_workspace({}) end' \
+  "$TEST_LOG" || fail "hide did not close Herdr Drop through its owning monitor"
+if rg -Fq 'workspace.toggle_special' "$TEST_LOG"; then
+  fail "hide toggled Herdr Drop on the focused monitor"
+fi
+HYPR_MONITORS_JSON='[]'
 [[ $(grep -cF 'require("hypr.herdr-drop")' "$HYPR/hyprland.lua") == 1 ]] \
   || fail "Hyprland require was not installed exactly once"
 assert_link_to "$CONFIG_ROOT/omarchy/themed/herdr-drop.toml.tpl" \
@@ -185,7 +197,7 @@ fi
 printf '%s' "$valid_config" >"$CONFIG_ROOT/herdr/config.toml"
 "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null \
   || fail "doctor rejected a healthy installation"
-[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.2" ]] \
+[[ $("$HOME_DIR/.local/bin/herdr-drop" version) == "herdr-drop 1.6.3" ]] \
   || fail "version command returned the wrong version"
 mv "$HYPR/herdr-drop-settings.lua" "$HYPR/herdr-drop-settings.lua.missing"
 if "$HOME_DIR/.local/bin/herdr-drop" doctor >/dev/null 2>&1; then
@@ -327,4 +339,4 @@ compgen -G "$HYPR/herdr-drop-settings.lua.bak.*" >/dev/null \
 compgen -G "$CONFIG_ROOT/herdr-drop/config.bak.*" >/dev/null \
   || fail "purge did not preserve a title backup"
 
-printf 'PASS: Herdr Drop v1.6.2 window/layer dismissal, outside-click dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'
+printf 'PASS: Herdr Drop v1.6.3 window/layer dismissal, outside-click dismissal, theme sync, events, contract checks, install, doctor, uninstall, and purge\n'

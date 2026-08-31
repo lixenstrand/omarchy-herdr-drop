@@ -5,8 +5,10 @@ local animations = {}
 local moves = {}
 local windows_on_special = {}
 local active_window = nil
+local cursor_monitor = nil
 local selected_window = nil
 local cursor = { x = 0, y = 0 }
+local timers = {}
 
 package.preload["hypr.herdr-drop-settings"] = function()
   return { animation_speed = 4 }
@@ -31,6 +33,13 @@ _G.hl = {
     return windows_on_special
   end,
   get_active_window = function() return active_window end,
+  get_active_monitor = function()
+    return active_window and active_window.monitor or nil
+  end,
+  get_monitor_at_cursor = function() return cursor_monitor end,
+  timer = function(callback, options)
+    table.insert(timers, { callback = callback, options = options })
+  end,
   on = function(event, callback) callbacks[event] = callback end,
   unbind = function() end,
 }
@@ -69,9 +78,15 @@ end
 local regular = { name = "1" }
 local special = { name = "special:herdrdrop" }
 local monitor = {
+  id = 1,
   active_workspace = regular,
   active_special_workspace = special,
+  close_count = 0,
 }
+function monitor:set_special_workspace(options)
+  assert(type(options) == "table", "special workspace close needs options table")
+  self.close_count = self.close_count + 1
+end
 local drop = {
   class = "org.omarchy.herdrdrop",
   workspace = special,
@@ -90,8 +105,12 @@ assert(action_count("window", foreign) == 1,
 assert(moves[1].workspace == regular, "foreign window moved to wrong workspace")
 assert(moves[1].window == foreign, "wrong foreign window was moved")
 assert(moves[1].follow == false, "moving foreign window changed workspace")
-assert(action_count("command", "sh -c 'sleep 0.1; herdr-drop hide'") == 1,
-  "opening a foreign window did not hide Herdr Drop")
+assert(#timers == 1 and timers[1].options.timeout == 100
+    and timers[1].options.type == "oneshot",
+  "opening a foreign window did not schedule Herdr Drop dismissal")
+timers[1].callback()
+assert(monitor.close_count == 1,
+  "opening a foreign window did not hide Herdr Drop on its monitor")
 
 callbacks["window.open"]({
   class = "org.omarchy.herdrdrop",
@@ -105,7 +124,9 @@ callbacks["window.open"]({
 })
 assert(action_count("window", foreign) == 1,
   "Herdr or a normal-workspace window was moved")
-assert(action_count("command", "sh -c 'sleep 0.1; herdr-drop hide'") == 2,
+assert(#timers == 2, "opening a normal-workspace window did not schedule dismissal")
+timers[2].callback()
+assert(monitor.close_count == 2,
   "opening a normal-workspace window did not hide Herdr Drop")
 
 local moved_foreign = {
@@ -127,33 +148,68 @@ assert(action_count("window", foreign) == 2,
 
 callbacks["window.active"](drop)
 callbacks["window.active"](foreign)
-assert(action_count("command", "herdr-drop hide") == 1,
+assert(monitor.close_count == 3,
   "focus leaving Herdr Drop did not hide the panel")
 
 monitor.active_special_workspace = nil
 callbacks["window.active"](drop)
 callbacks["window.active"](foreign)
-assert(action_count("command", "herdr-drop hide") == 1,
+assert(monitor.close_count == 3,
   "a hidden Herdr Drop panel was toggled back open")
 
 monitor.active_special_workspace = special
+cursor_monitor = monitor
 drop.at = { x = 100, y = 100 }
 drop.size = { x = 400, y = 300 }
 selected_window = drop
 cursor = { x = 200, y = 200 }
 binds["mouse:272"].callback()
-assert(action_count("command", "herdr-drop hide") == 1,
+assert(monitor.close_count == 3,
   "a click inside Herdr Drop hid the panel")
 
 cursor = { x = 50, y = 50 }
 binds["mouse:272"].callback()
-assert(action_count("command", "herdr-drop hide") == 2,
+assert(monitor.close_count == 4,
   "a click outside Herdr Drop did not hide the panel")
 
-callbacks["layer.opened"]({ namespace = "omarchy-background" })
-assert(action_count("command", "herdr-drop hide") == 2,
+local other_monitor = {
+  id = 2,
+  active_workspace = { name = "6" },
+  active_special_workspace = nil,
+}
+cursor_monitor = other_monitor
+cursor = { x = 2100, y = 50 }
+binds["mouse:272"].callback()
+assert(monitor.close_count == 4,
+  "clicking another monitor hid Herdr Drop on its original monitor")
+
+callbacks["window.open"]({
+  class = "foot",
+  workspace = other_monitor.active_workspace,
+  monitor = other_monitor,
+})
+assert(#timers == 3, "opening a window on another monitor did not schedule cleanup")
+timers[3].callback()
+assert(monitor.close_count == 4,
+  "opening a window on another monitor hid Herdr Drop")
+
+callbacks["layer.opened"]({ namespace = "omarchy-background", monitor = monitor })
+assert(monitor.close_count == 4,
   "a persistent shell layer hid Herdr Drop")
 
-callbacks["layer.opened"]({ namespace = "omarchy-menu" })
-assert(action_count("command", "herdr-drop hide") == 3,
+callbacks["layer.opened"]({ namespace = "omarchy-menu", monitor = monitor })
+assert(monitor.close_count == 5,
   "opening the Omarchy menu did not hide Herdr Drop")
+
+callbacks["layer.opened"]({ namespace = "omarchy-menu", monitor = other_monitor })
+assert(monitor.close_count == 5,
+  "opening an Omarchy menu on another monitor hid Herdr Drop")
+
+callbacks["window.active"](drop)
+callbacks["window.active"]({
+  class = "foot",
+  workspace = other_monitor.active_workspace,
+  monitor = other_monitor,
+})
+assert(monitor.close_count == 5,
+  "focusing another monitor hid Herdr Drop on its original monitor")

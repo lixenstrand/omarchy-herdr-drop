@@ -3,7 +3,7 @@
 
 set -uo pipefail
 
-VERSION="1.6.2"
+VERSION="1.6.3"
 APP_ID="org.omarchy.herdrdrop"
 SPECIAL="herdrdrop"
 USER_HOME="${HERDR_DROP_HOME:-$HOME}"
@@ -52,6 +52,29 @@ special_visible() {
       'any(.[]; .specialWorkspace.name == $workspace)' >/dev/null 2>&1
 }
 
+special_monitor() {
+  hyprctl -j monitors 2>/dev/null \
+    | jq -r --arg workspace "special:$SPECIAL" \
+      'first(.[] | select(.specialWorkspace.name == $workspace) | .name) // empty'
+}
+
+hide_special() {
+  local monitor response
+  monitor="$(special_monitor)"
+  [[ -n $monitor ]] || return 0
+  if [[ ! $monitor =~ ^[[:alnum:]_.:-]+$ ]]; then
+    notify-send "Herdr Drop" "Could not hide special:$SPECIAL — unsafe monitor name" 2>/dev/null
+    return 1
+  fi
+
+  response="$(hyprctl eval \
+    "local monitor = hl.get_monitor(\"$monitor\"); if monitor then monitor:set_special_workspace({}) end" \
+    2>&1)"
+  [[ $response == ok ]] && return 0
+  notify-send "Herdr Drop" "Could not hide special:$SPECIAL — $response" 2>/dev/null
+  return 1
+}
+
 hide_connector() {
   command -v omarchy-shell >/dev/null 2>&1 || return 0
   [[ -e $SHIBUMI_PLUGIN || -L $SHIBUMI_PROFILE ]] || return 0
@@ -62,7 +85,7 @@ show_window() { special_visible || toggle_special; }
 hide_window() {
   if special_visible; then
     hide_connector
-    toggle_special
+    hide_special
   fi
 }
 

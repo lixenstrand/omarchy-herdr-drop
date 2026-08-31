@@ -15,9 +15,10 @@ the two most important agents, and adds a privacy mode for screen sharing.
 Version 1.5 owns its Omarchy-to-Herdr theme hook, consumes Herdr events instead
 of polling every three seconds, validates the Shibumi host contract, and makes
 `doctor` verify the installed connector and its live colors.
-Version 1.6 hides the panel when focus moves away, the user clicks outside it,
-another window opens, or an interactive Omarchy menu appears, while keeping
-the Herdr client and its sessions alive.
+Version 1.6 hides the panel when focus moves away on its current monitor, the
+user clicks outside it there, another window opens, or an interactive Omarchy
+menu appears. Activity on another monitor leaves the panel open, and the Herdr
+client and its sessions stay alive throughout.
 
 The core is an Omarchy and Hyprland integration. The optional bar component is
 a Quickshell plugin; the installer still owns the window rule and keybinding
