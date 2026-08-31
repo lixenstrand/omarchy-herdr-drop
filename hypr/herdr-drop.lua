@@ -74,7 +74,10 @@ local function close_drop_on_focus_loss(window)
   end
 
   local monitor = focused_drop_monitor
-  local next_monitor = window and window.monitor or hl.get_active_monitor()
+  -- A desktop click can clear the active window before Hyprland updates its
+  -- focused-monitor state. The cursor already identifies the clicked monitor.
+  local next_monitor = window and window.monitor or hl.get_monitor_at_cursor()
+  if next_monitor == nil then next_monitor = hl.get_active_monitor() end
   -- Another monitor remains usable while the drop stays visible on the
   -- monitor where it opened. Only focus loss on that same monitor dismisses
   -- the panel.
