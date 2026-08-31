@@ -93,6 +93,9 @@ local function close_drop_on_outside_click()
   local active_special = window.monitor.active_special_workspace
   if active_special == nil or active_special.name ~= special_workspace then return end
 
+  local cursor_monitor = hl.get_monitor_at_cursor()
+  if cursor_monitor ~= nil and not same_monitor(window.monitor, cursor_monitor) then return end
+
   local cursor = hl.get_cursor_pos()
   if cursor == nil or window.at == nil or window.size == nil then return end
 

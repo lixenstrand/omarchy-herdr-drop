@@ -5,6 +5,7 @@ local animations = {}
 local moves = {}
 local windows_on_special = {}
 local active_window = nil
+local cursor_monitor = nil
 local selected_window = nil
 local cursor = { x = 0, y = 0 }
 local timers = {}
@@ -35,6 +36,7 @@ _G.hl = {
   get_active_monitor = function()
     return active_window and active_window.monitor or nil
   end,
+  get_monitor_at_cursor = function() return cursor_monitor end,
   timer = function(callback, options)
     table.insert(timers, { callback = callback, options = options })
   end,
@@ -156,6 +158,7 @@ assert(monitor.close_count == 3,
   "a hidden Herdr Drop panel was toggled back open")
 
 monitor.active_special_workspace = special
+cursor_monitor = monitor
 drop.at = { x = 100, y = 100 }
 drop.size = { x = 400, y = 300 }
 selected_window = drop
@@ -169,6 +172,17 @@ binds["mouse:272"].callback()
 assert(monitor.close_count == 4,
   "a click outside Herdr Drop did not hide the panel")
 
+local other_monitor = {
+  id = 2,
+  active_workspace = { name = "6" },
+  active_special_workspace = nil,
+}
+cursor_monitor = other_monitor
+cursor = { x = 2100, y = 50 }
+binds["mouse:272"].callback()
+assert(monitor.close_count == 4,
+  "clicking another monitor hid Herdr Drop on its original monitor")
+
 callbacks["layer.opened"]({ namespace = "omarchy-background" })
 assert(monitor.close_count == 4,
   "a persistent shell layer hid Herdr Drop")
@@ -177,11 +191,6 @@ callbacks["layer.opened"]({ namespace = "omarchy-menu" })
 assert(monitor.close_count == 5,
   "opening the Omarchy menu did not hide Herdr Drop")
 
-local other_monitor = {
-  id = 2,
-  active_workspace = { name = "6" },
-  active_special_workspace = nil,
-}
 callbacks["window.active"](drop)
 callbacks["window.active"]({
   class = "foot",
